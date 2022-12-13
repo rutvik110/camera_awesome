@@ -21,11 +21,9 @@ class CameraPreviewCovered extends StatelessWidget {
       builder: (_, snapshot) {
         if (!snapshot.hasData) {
           return loadingWidget ??
-              Center(
-                child: Platform.isIOS
-                    ? CupertinoActivityIndicator()
-                    : CircularProgressIndicator(),
-              );
+              (Platform.isIOS
+                  ? const CupertinoActivityIndicator()
+                  : const CircularProgressIndicator());
         }
 
         return OrientationBuilder(builder: (context, orientation) {
@@ -38,18 +36,12 @@ class CameraPreviewCovered extends StatelessWidget {
               final textureId = data[1] as int;
               final double ratio = size.height / size.width;
               var scale = size.height / maxSize.height;
-              return Container(
-                height: constraints.maxHeight,
-                width: constraints.maxWidth,
-                color: Colors.red,
-                child: Center(
-                  child: Transform.scale(
-                    scale: scale,
-                    child: AspectRatio(
-                      aspectRatio: ratio,
-                      child: Texture(textureId: textureId),
-                    ),
-                  ),
+
+              return Transform.scale(
+                scale: scale,
+                child: AspectRatio(
+                  aspectRatio: ratio,
+                  child: Texture(textureId: textureId),
                 ),
               );
             },
@@ -89,8 +81,8 @@ class MinimizedCameraPreviewWidget extends StatelessWidget {
           return loadingWidget ??
               Center(
                 child: Platform.isIOS
-                    ? CupertinoActivityIndicator()
-                    : CircularProgressIndicator(),
+                    ? const CupertinoActivityIndicator()
+                    : const CircularProgressIndicator(),
               );
         }
 

@@ -76,7 +76,7 @@ class CameraAwesomeBuilder extends StatefulWidget {
 
   final AnalysisConfig? imageAnalysisConfig;
 
-  CameraAwesomeBuilder._({
+  const CameraAwesomeBuilder._({
     required this.initialCaptureMode,
     required this.sensor,
     required this.flashMode,
@@ -143,7 +143,7 @@ class CameraAwesomeBuilder extends StatefulWidget {
     );
   }
 
-  CameraAwesomeBuilder.custom({
+  const CameraAwesomeBuilder.custom({
     CaptureModes initialCaptureMode = CaptureModes.PHOTO,
     Sensors sensor = Sensors.BACK,
     CameraFlashes flashMode = CameraFlashes.NONE,
@@ -251,21 +251,17 @@ class _CameraWidgetBuilder extends State<CameraAwesomeBuilder>
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.captureMode == null) {
           return widget.progressIndicator ??
-              Center(
-                child: Platform.isIOS
-                    ? CupertinoActivityIndicator()
-                    : CircularProgressIndicator(),
-              );
+              (Platform.isIOS
+                  ? const CupertinoActivityIndicator()
+                  : const CircularProgressIndicator());
         }
         return Stack(
-          fit: StackFit.expand,
+          // fit: StackFit.expand,
           children: <Widget>[
-            Positioned.fill(
-              child: PinchToZoom(
-                sensorConfig: cameraContext.sensorConfig,
-                child: CameraPreviewCovered(
-                  key: UniqueKey(),
-                ),
+            PinchToZoom(
+              sensorConfig: cameraContext.sensorConfig,
+              child: CameraPreviewCovered(
+                key: UniqueKey(),
               ),
             ),
             Positioned.fill(
