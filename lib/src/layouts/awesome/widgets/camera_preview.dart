@@ -7,12 +7,11 @@ import 'package:flutter/material.dart';
 /// This is a fullscreen camera preview
 /// some part of the preview are croped so we have a full sized camera preview
 class CameraPreviewCovered extends StatelessWidget {
-  final Widget? loadingWidget;
-
   const CameraPreviewCovered({
     super.key,
     this.loadingWidget,
   });
+  final Widget? loadingWidget;
 
   @override
   Widget build(BuildContext context) {
@@ -26,27 +25,29 @@ class CameraPreviewCovered extends StatelessWidget {
                   : const CircularProgressIndicator());
         }
 
-        return OrientationBuilder(builder: (context, orientation) {
-          return LayoutBuilder(
-            builder: (_, constraints) {
-              final data = snapshot.data!;
-              final size = data[0] as Size;
-              final maxSize = constraints
-                  .constrainSizeAndAttemptToPreserveAspectRatio(size);
-              final textureId = data[1] as int;
-              final double ratio = size.height / size.width;
-              var scale = size.height / maxSize.height;
+        return OrientationBuilder(
+          builder: (context, orientation) {
+            return LayoutBuilder(
+              builder: (_, constraints) {
+                final data = snapshot.data!;
+                final size = data[0] as Size;
+                final maxSize = constraints
+                    .constrainSizeAndAttemptToPreserveAspectRatio(size);
+                final textureId = data[1] as int;
+                final double ratio = size.height / size.width;
+                final scale = size.height / maxSize.height;
 
-              return Transform.scale(
-                scale: scale,
-                child: AspectRatio(
-                  aspectRatio: ratio,
-                  child: Texture(textureId: textureId),
-                ),
-              );
-            },
-          );
-        });
+                return Transform.scale(
+                  scale: 1,
+                  child: AspectRatio(
+                    aspectRatio: ratio,
+                    child: Texture(textureId: textureId),
+                  ),
+                );
+              },
+            );
+          },
+        );
       },
     );
   }
@@ -57,7 +58,7 @@ class CameraPreviewCovered extends StatelessWidget {
 
   Future<int?> textureId() {
     return CamerawesomePlugin.getPreviewTexture()
-        .then(((value) => value?.toInt()));
+        .then((value) => value?.toInt());
   }
 }
 
@@ -65,12 +66,11 @@ class CameraPreviewCovered extends StatelessWidget {
 /// (corresponds to css contains)
 /// The preview is minimized to be shown completely
 class MinimizedCameraPreviewWidget extends StatelessWidget {
-  final Widget? loadingWidget;
-
   const MinimizedCameraPreviewWidget({
     super.key,
     this.loadingWidget,
   });
+  final Widget? loadingWidget;
 
   @override
   Widget build(BuildContext context) {
@@ -86,33 +86,35 @@ class MinimizedCameraPreviewWidget extends StatelessWidget {
               );
         }
 
-        return OrientationBuilder(builder: (context, orientation) {
-          return LayoutBuilder(
-            builder: (_, constraints) {
-              final data = snapshot.data!;
-              final size = data[0] as Size;
-              final textureId = data[1] as int;
-              final double ratio = size.height / size.width;
-              return Container(
-                color: Colors.black,
-                child: Center(
-                  child: AspectRatio(
-                    aspectRatio: ratio,
-                    child: SizedBox(
-                      height: orientation == Orientation.portrait
-                          ? constraints.maxHeight
-                          : constraints.maxWidth,
-                      width: orientation == Orientation.portrait
-                          ? constraints.maxWidth
-                          : constraints.maxHeight,
-                      child: Texture(textureId: textureId),
+        return OrientationBuilder(
+          builder: (context, orientation) {
+            return LayoutBuilder(
+              builder: (_, constraints) {
+                final data = snapshot.data!;
+                final size = data[0] as Size;
+                final textureId = data[1] as int;
+                final double ratio = size.height / size.width;
+                return Container(
+                  color: Colors.black,
+                  child: Center(
+                    child: AspectRatio(
+                      aspectRatio: ratio,
+                      child: SizedBox(
+                        height: orientation == Orientation.portrait
+                            ? constraints.maxHeight
+                            : constraints.maxWidth,
+                        width: orientation == Orientation.portrait
+                            ? constraints.maxWidth
+                            : constraints.maxHeight,
+                        child: Texture(textureId: textureId),
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
-          );
-        });
+                );
+              },
+            );
+          },
+        );
       },
     );
   }
@@ -137,6 +139,6 @@ class MinimizedCameraPreviewWidget extends StatelessWidget {
 
   Future<int?> textureId() {
     return CamerawesomePlugin.getPreviewTexture()
-        .then(((value) => value?.toInt()));
+        .then((value) => value?.toInt());
   }
 }
