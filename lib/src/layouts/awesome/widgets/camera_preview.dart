@@ -37,17 +37,11 @@ class CameraPreviewCovered extends StatelessWidget {
                 final double ratio = size.height / size.width;
                 final scale = size.height / maxSize.height;
 
-                return SizedBox(
-                  width: maxSize.width,
-                  height: maxSize.height,
-                  child: Center(
-                    child: Transform.scale(
-                      scale: scale,
-                      child: AspectRatio(
-                        aspectRatio: ratio,
-                        child: Texture(textureId: textureId),
-                      ),
-                    ),
+                return Transform.scale(
+                  scale: 1,
+                  child: AspectRatio(
+                    aspectRatio: ratio,
+                    child: Texture(textureId: textureId),
                   ),
                 );
               },
