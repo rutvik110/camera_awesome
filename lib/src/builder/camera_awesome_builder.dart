@@ -46,6 +46,113 @@ typedef OnImageForAnalysis = void Function(AnalysisImage image);
 /// - use our built in interface
 /// with the awesome factory
 class CameraAwesomeBuilder extends StatefulWidget {
+  const CameraAwesomeBuilder.custom({
+    CaptureModes initialCaptureMode = CaptureModes.PHOTO,
+    Sensors sensor = Sensors.BACK,
+    CameraFlashes flashMode = CameraFlashes.NONE,
+    double zoom = 0.0,
+    double? aspectRatio,
+    List<CaptureModes> availableModes = const [
+      CaptureModes.PHOTO,
+      CaptureModes.VIDEO
+    ],
+    ExifPreferences? exifPreferences,
+    bool enableAudio = true,
+    Widget? progressIndicator,
+    required CameraLayoutBuilder builder,
+    Future<String> Function(CaptureModes)? picturePathBuilder,
+    Future<String> Function(CaptureModes)? videoPathBuilder,
+    Function(MediaCapture)? onMediaTap,
+    OnImageForAnalysis? onImageForAnalysis,
+    AnalysisConfig? imageAnalysisConfig,
+  }) : this._(
+          initialCaptureMode: initialCaptureMode,
+          sensor: sensor,
+          flashMode: flashMode,
+          zoom: zoom,
+          availableModes: availableModes,
+          exifPreferences: exifPreferences,
+          enableAudio: enableAudio,
+          progressIndicator: progressIndicator,
+          builder: builder,
+          picturePathBuilder: picturePathBuilder,
+          videoPathBuilder: videoPathBuilder,
+          onMediaTap: onMediaTap,
+          onImageForAnalysis: onImageForAnalysis,
+          imageAnalysisConfig: imageAnalysisConfig,
+          aspectRatio: aspectRatio,
+        );
+
+  factory CameraAwesomeBuilder.awesome({
+    CaptureModes initialCaptureMode = CaptureModes.PHOTO,
+    Sensors sensor = Sensors.BACK,
+    CameraFlashes flashMode = CameraFlashes.NONE,
+    double zoom = 0.0,
+    List<CaptureModes> availableModes = const [
+      CaptureModes.PHOTO,
+      CaptureModes.VIDEO
+    ],
+    ExifPreferences? exifPreferences,
+    bool enableAudio = true,
+    Widget? progressIndicator,
+    Future<String> Function(CaptureModes)? picturePathBuilder,
+    Future<String> Function(CaptureModes)? videoPathBuilder,
+    Function(MediaCapture)? onMediaTap,
+    OnImageForAnalysis? onImageForAnalysis,
+    AnalysisConfig? imageAnalysisConfig,
+  }) {
+    /// TODO refactor this (those two args could be merged)
+    if (availableModes.contains(CaptureModes.PHOTO) &&
+        picturePathBuilder == null) {
+      throw 'You have to provide a path through [picturePathBuilder] to save your picture';
+    }
+
+    /// TODO refactor this (those two args could be merged)
+    if (availableModes.contains(CaptureModes.VIDEO) &&
+        videoPathBuilder == null) {
+      throw 'You have to provide a path through [videoPathBuilder] to save your picture';
+    }
+    return CameraAwesomeBuilder._(
+      initialCaptureMode: initialCaptureMode,
+      sensor: sensor,
+      flashMode: flashMode,
+      zoom: zoom,
+      availableModes: availableModes,
+      exifPreferences: exifPreferences,
+      enableAudio: enableAudio,
+      progressIndicator: progressIndicator,
+      builder: (cameraModeState) => AwesomeCameraLayout(
+        state: cameraModeState,
+        onMediaTap: onMediaTap,
+      ),
+      picturePathBuilder: picturePathBuilder,
+      videoPathBuilder: videoPathBuilder,
+      onMediaTap: onMediaTap,
+      onImageForAnalysis: onImageForAnalysis,
+      imageAnalysisConfig: imageAnalysisConfig,
+    );
+  }
+
+  const CameraAwesomeBuilder._({
+    required this.initialCaptureMode,
+    required this.sensor,
+    required this.flashMode,
+    required this.zoom,
+    required this.availableModes,
+    required this.exifPreferences,
+    required this.enableAudio,
+    required this.progressIndicator,
+    required this.picturePathBuilder,
+    required this.videoPathBuilder,
+    required this.onMediaTap,
+    required this.builder,
+    this.onImageForAnalysis,
+    this.imageAnalysisConfig,
+    this.aspectRatio,
+  });
+
+  final double? aspectRatio;
+
   // Initial camera config
   final CaptureModes initialCaptureMode;
 
@@ -75,108 +182,6 @@ class CameraAwesomeBuilder extends StatefulWidget {
   final OnImageForAnalysis? onImageForAnalysis;
 
   final AnalysisConfig? imageAnalysisConfig;
-
-  const CameraAwesomeBuilder._({
-    required this.initialCaptureMode,
-    required this.sensor,
-    required this.flashMode,
-    required this.zoom,
-    required this.availableModes,
-    required this.exifPreferences,
-    required this.enableAudio,
-    required this.progressIndicator,
-    required this.picturePathBuilder,
-    required this.videoPathBuilder,
-    required this.onMediaTap,
-    required this.builder,
-    this.onImageForAnalysis,
-    this.imageAnalysisConfig,
-  });
-
-  factory CameraAwesomeBuilder.awesome({
-    CaptureModes initialCaptureMode = CaptureModes.PHOTO,
-    Sensors sensor = Sensors.BACK,
-    CameraFlashes flashMode = CameraFlashes.NONE,
-    double zoom = 0.0,
-    List<CaptureModes> availableModes = const [
-      CaptureModes.PHOTO,
-      CaptureModes.VIDEO
-    ],
-    ExifPreferences? exifPreferences,
-    bool enableAudio = true,
-    Widget? progressIndicator,
-    Future<String> Function(CaptureModes)? picturePathBuilder,
-    Future<String> Function(CaptureModes)? videoPathBuilder,
-    Function(MediaCapture)? onMediaTap,
-    OnImageForAnalysis? onImageForAnalysis,
-    AnalysisConfig? imageAnalysisConfig,
-  }) {
-    /// TODO refactor this (those two args could be merged)
-    if (availableModes.contains(CaptureModes.PHOTO) &&
-        picturePathBuilder == null) {
-      throw ("You have to provide a path through [picturePathBuilder] to save your picture");
-    }
-
-    /// TODO refactor this (those two args could be merged)
-    if (availableModes.contains(CaptureModes.VIDEO) &&
-        videoPathBuilder == null) {
-      throw ("You have to provide a path through [videoPathBuilder] to save your picture");
-    }
-    return CameraAwesomeBuilder._(
-      initialCaptureMode: initialCaptureMode,
-      sensor: sensor,
-      flashMode: flashMode,
-      zoom: zoom,
-      availableModes: availableModes,
-      exifPreferences: exifPreferences,
-      enableAudio: enableAudio,
-      progressIndicator: progressIndicator,
-      builder: (cameraModeState) => AwesomeCameraLayout(
-        state: cameraModeState,
-        onMediaTap: onMediaTap,
-      ),
-      picturePathBuilder: picturePathBuilder,
-      videoPathBuilder: videoPathBuilder,
-      onMediaTap: onMediaTap,
-      onImageForAnalysis: onImageForAnalysis,
-      imageAnalysisConfig: imageAnalysisConfig,
-    );
-  }
-
-  const CameraAwesomeBuilder.custom({
-    CaptureModes initialCaptureMode = CaptureModes.PHOTO,
-    Sensors sensor = Sensors.BACK,
-    CameraFlashes flashMode = CameraFlashes.NONE,
-    double zoom = 0.0,
-    List<CaptureModes> availableModes = const [
-      CaptureModes.PHOTO,
-      CaptureModes.VIDEO
-    ],
-    ExifPreferences? exifPreferences,
-    bool enableAudio = true,
-    Widget? progressIndicator,
-    required CameraLayoutBuilder builder,
-    Future<String> Function(CaptureModes)? picturePathBuilder,
-    Future<String> Function(CaptureModes)? videoPathBuilder,
-    Function(MediaCapture)? onMediaTap,
-    OnImageForAnalysis? onImageForAnalysis,
-    AnalysisConfig? imageAnalysisConfig,
-  }) : this._(
-          initialCaptureMode: initialCaptureMode,
-          sensor: sensor,
-          flashMode: flashMode,
-          zoom: zoom,
-          availableModes: availableModes,
-          exifPreferences: exifPreferences,
-          enableAudio: enableAudio,
-          progressIndicator: progressIndicator,
-          builder: builder,
-          picturePathBuilder: picturePathBuilder,
-          videoPathBuilder: videoPathBuilder,
-          onMediaTap: onMediaTap,
-          onImageForAnalysis: onImageForAnalysis,
-          imageAnalysisConfig: imageAnalysisConfig,
-        );
 
   @override
   State<StatefulWidget> createState() {
@@ -261,6 +266,7 @@ class _CameraWidgetBuilder extends State<CameraAwesomeBuilder>
             PinchToZoom(
               sensorConfig: cameraContext.sensorConfig,
               child: CameraPreviewCovered(
+                aspectRatio: widget.aspectRatio,
                 key: UniqueKey(),
               ),
             ),

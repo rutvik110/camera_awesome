@@ -10,8 +10,10 @@ class CameraPreviewCovered extends StatelessWidget {
   const CameraPreviewCovered({
     super.key,
     this.loadingWidget,
+    this.aspectRatio,
   });
   final Widget? loadingWidget;
+  final double? aspectRatio;
 
   @override
   Widget build(BuildContext context) {
@@ -36,12 +38,13 @@ class CameraPreviewCovered extends StatelessWidget {
                 final textureId = data[1] as int;
                 final double ratio = size.height / size.width;
                 final scale = size.height / maxSize.height;
+                final texture = Texture(textureId: textureId);
 
                 return Transform.scale(
                   scale: 1,
                   child: AspectRatio(
-                    aspectRatio: ratio,
-                    child: Texture(textureId: textureId),
+                    aspectRatio: aspectRatio ?? ratio,
+                    child: texture,
                   ),
                 );
               },
