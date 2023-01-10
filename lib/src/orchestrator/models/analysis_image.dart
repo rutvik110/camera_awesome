@@ -1,26 +1,51 @@
 import 'dart:typed_data';
+import 'dart:ui';
 
-enum InputAnalysisImageFormat { yuv_420_888, nv21, jpeg, unknown }
+enum InputAnalysisImageFormat { yuv_420, bgra8888, jpeg, nv21, unknown }
+
+enum InputAnalysisImageRotation {
+  rotation0deg,
+  rotation90deg,
+  rotation180deg,
+  rotation270deg
+}
 
 InputAnalysisImageFormat inputAnalysisImageFormatParser(String value) {
   switch (value) {
-    case 'yuv_420_888': // android.graphics.ImageFormat.YUV_420_888
-      return InputAnalysisImageFormat.yuv_420_888;
+    case 'yuv420': // android.graphics.ImageFormat.YUV_420_888
+      return InputAnalysisImageFormat.yuv_420;
+    case 'bgra8888':
+      return InputAnalysisImageFormat.bgra8888;
     case 'jpeg': // android.graphics.ImageFormat.JPEG
       return InputAnalysisImageFormat.jpeg;
-    case 'nv21':
+    case 'nv21': // android.graphics.ImageFormat.nv21
       return InputAnalysisImageFormat.nv21;
   }
   return InputAnalysisImageFormat.unknown;
 }
 
 class AnalysisConfig {
+  /// Image analysis format.
+  /// Used only on Android for now.
   final InputAnalysisImageFormat outputFormat;
+
+  /// `Target width of you image analysis. CamerAwesome will try to find the
+  /// closest resolution to this [width].
+  /// Used only on Android for now.
   final int width;
 
+  /// This is used to improve performance on low performance devices.
+  /// It will skip frames if the camera is producing more than the specified.
+  ///
+  /// For exemple, if the camera is producing 30fps and you set this to 10, it will skip 20 frames.
+  ///
+  /// Default is null (disabled).
+  final double? maxFramesPerSecond;
+
   AnalysisConfig({
-    required this.outputFormat,
-    required this.width,
+    this.outputFormat = InputAnalysisImageFormat.nv21,
+    this.width = 500,
+    this.maxFramesPerSecond,
   });
 }
 
@@ -41,8 +66,9 @@ class AnalysisImage {
   int width;
   List<ImagePlane> planes;
   InputAnalysisImageFormat format;
-  int rotation;
   Uint8List? nv21Image;
+  InputAnalysisImageRotation rotation;
+  Rect? cropRect;
 
   AnalysisImage({
     required this.height,
@@ -51,6 +77,7 @@ class AnalysisImage {
     required this.format,
     required this.rotation,
     this.nv21Image,
+    this.cropRect,
   });
 
   factory AnalysisImage.from(Map<String, dynamic> map) {
@@ -60,29 +87,43 @@ class AnalysisImage {
       planes: (map["planes"] as List<dynamic>)
           .map((e) => ImagePlane.from(Map<String, dynamic>.from(e)))
           .toList(),
+      rotation: InputAnalysisImageRotation.values.byName(map["rotation"]),
       format: inputAnalysisImageFormatParser(map["format"]),
-      rotation: map["rotation"],
+      // Android only
       nv21Image: map.containsKey("nv21Image") ? map["nv21Image"] : null,
+      // Android only
+      cropRect: map.containsKey("cropRect")
+          ? Rect.fromLTRB(
+              map["cropRect"]["left"].toDouble(),
+              map["cropRect"]["top"].toDouble(),
+              map["cropRect"]["right"].toDouble(),
+              map["cropRect"]["bottom"].toDouble(),
+            )
+          : null,
     );
   }
 }
 
 class ImagePlane {
+  // TODO: Android is now broken as I need to change args for iOS
   Uint8List bytes;
-  int rowStride;
-  int pixelStride;
+  int bytesPerRow;
+  int? height;
+  int? width;
 
   ImagePlane({
     required this.bytes,
-    required this.rowStride,
-    required this.pixelStride,
+    required this.bytesPerRow,
+    required this.height,
+    required this.width,
   });
 
   factory ImagePlane.from(Map<String, dynamic> map) {
     return ImagePlane(
       bytes: map["bytes"],
-      rowStride: map["rowStride"],
-      pixelStride: map["pixelStride"],
+      bytesPerRow: map["bytesPerRow"] ?? map["rowStride"],
+      height: map["height"],
+      width: map["width"],
     );
   }
 }

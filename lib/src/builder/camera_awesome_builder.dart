@@ -1,42 +1,41 @@
 import 'dart:io';
 
+import 'package:camerawesome/camerawesome_plugin.dart';
 import 'package:camerawesome/pigeon.dart';
-import 'package:camerawesome/src/layouts/awesome/awesome_layout.dart';
-import 'package:camerawesome/src/orchestrator/models/media_capture.dart';
+import 'package:camerawesome/src/layouts/awesome/awesome_camera_layout.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../layouts/awesome/widgets/camera_preview.dart';
-import '../layouts/awesome/widgets/pinch_to_zoom.dart';
 import '../orchestrator/camera_context.dart';
-import '../orchestrator/models/analysis_image.dart';
-import '../orchestrator/models/capture_modes.dart';
-import '../orchestrator/models/flashmodes.dart';
-import '../orchestrator/models/sensors.dart';
-import '../orchestrator/sensor_config.dart';
-import '../orchestrator/states/state_definition.dart';
 
-/// this is the builder for your camera interface
-/// Using the state you can do anything you need without having to think about the camera flow
+/// This is the builder for your camera interface
+/// Using the [state] you can do anything you need without having to think about the camera flow
 /// On app start we are in [PreparingCameraState]
-/// Then depending on the initialCaptureMode you set you will be [PictureCameraState] or [VideoCameraState]
+/// Then depending on the initialCaptureMode you set you will be [PhotoCameraState] or [VideoCameraState]
 /// Starting a video will push a [VideoRecordingCameraState]
 /// Stopping the video will push back the [VideoCameraState]
 /// ----
 /// If you need to call specific function for a state use the 'when' function.
-typedef CameraLayoutBuilder = Widget Function(CameraState cameraModeState);
+typedef CameraLayoutBuilder = Widget Function(
+  CameraState state,
 
-/// configure the path where we save videos or pictures
-typedef FilePathBuilder = Future<String> Function(CaptureModes)?;
+  /// [previewSize] not clipped
+  PreviewSize previewSize,
 
-/// Callback when a video or picture has been saved and user click on thumbnail
-typedef OnMediaTap = Function(MediaCapture mediaState)?;
+  /// [previewRect] size might be different than [previewSize] if it has been
+  /// clipped. It is often clipped in 1:1 ratio. Use it to show elements
+  /// relative to the preview (inside or outside for instance)
+  Rect previewRect,
+);
+
+/// Callback when a video or photo has been saved and user click on thumbnail
+typedef OnMediaTap = Function(MediaCapture mediaCapture)?;
 
 /// Used to set a permission result callback
 typedef OnPermissionsResult = void Function(bool result);
 
-/// analysis image stream listener
+/// Analysis image stream listener
 typedef OnImageForAnalysis = void Function(AnalysisImage image);
 
 /// This is the entry point of the CameraAwesome plugin
@@ -46,142 +45,167 @@ typedef OnImageForAnalysis = void Function(AnalysisImage image);
 /// - use our built in interface
 /// with the awesome factory
 class CameraAwesomeBuilder extends StatefulWidget {
-  const CameraAwesomeBuilder.custom({
-    CaptureModes initialCaptureMode = CaptureModes.PHOTO,
-    Sensors sensor = Sensors.BACK,
-    CameraFlashes flashMode = CameraFlashes.NONE,
-    double zoom = 0.0,
-    double? aspectRatio,
-    List<CaptureModes> availableModes = const [
-      CaptureModes.PHOTO,
-      CaptureModes.VIDEO
-    ],
-    ExifPreferences? exifPreferences,
-    bool enableAudio = true,
-    Widget? progressIndicator,
-    required CameraLayoutBuilder builder,
-    Future<String> Function(CaptureModes)? picturePathBuilder,
-    Future<String> Function(CaptureModes)? videoPathBuilder,
-    Function(MediaCapture)? onMediaTap,
-    OnImageForAnalysis? onImageForAnalysis,
-    AnalysisConfig? imageAnalysisConfig,
-  }) : this._(
-          initialCaptureMode: initialCaptureMode,
-          sensor: sensor,
-          flashMode: flashMode,
-          zoom: zoom,
-          availableModes: availableModes,
-          exifPreferences: exifPreferences,
-          enableAudio: enableAudio,
-          progressIndicator: progressIndicator,
-          builder: builder,
-          picturePathBuilder: picturePathBuilder,
-          videoPathBuilder: videoPathBuilder,
-          onMediaTap: onMediaTap,
-          onImageForAnalysis: onImageForAnalysis,
-          imageAnalysisConfig: imageAnalysisConfig,
-          aspectRatio: aspectRatio,
-        );
-
-  factory CameraAwesomeBuilder.awesome({
-    CaptureModes initialCaptureMode = CaptureModes.PHOTO,
-    Sensors sensor = Sensors.BACK,
-    CameraFlashes flashMode = CameraFlashes.NONE,
-    double zoom = 0.0,
-    List<CaptureModes> availableModes = const [
-      CaptureModes.PHOTO,
-      CaptureModes.VIDEO
-    ],
-    ExifPreferences? exifPreferences,
-    bool enableAudio = true,
-    Widget? progressIndicator,
-    Future<String> Function(CaptureModes)? picturePathBuilder,
-    Future<String> Function(CaptureModes)? videoPathBuilder,
-    Function(MediaCapture)? onMediaTap,
-    OnImageForAnalysis? onImageForAnalysis,
-    AnalysisConfig? imageAnalysisConfig,
-  }) {
-    /// TODO refactor this (those two args could be merged)
-    if (availableModes.contains(CaptureModes.PHOTO) &&
-        picturePathBuilder == null) {
-      throw 'You have to provide a path through [picturePathBuilder] to save your picture';
-    }
-
-    /// TODO refactor this (those two args could be merged)
-    if (availableModes.contains(CaptureModes.VIDEO) &&
-        videoPathBuilder == null) {
-      throw 'You have to provide a path through [videoPathBuilder] to save your picture';
-    }
-    return CameraAwesomeBuilder._(
-      initialCaptureMode: initialCaptureMode,
-      sensor: sensor,
-      flashMode: flashMode,
-      zoom: zoom,
-      availableModes: availableModes,
-      exifPreferences: exifPreferences,
-      enableAudio: enableAudio,
-      progressIndicator: progressIndicator,
-      builder: (cameraModeState) => AwesomeCameraLayout(
-        state: cameraModeState,
-        onMediaTap: onMediaTap,
-      ),
-      picturePathBuilder: picturePathBuilder,
-      videoPathBuilder: videoPathBuilder,
-      onMediaTap: onMediaTap,
-      onImageForAnalysis: onImageForAnalysis,
-      imageAnalysisConfig: imageAnalysisConfig,
-    );
-  }
-
-  const CameraAwesomeBuilder._({
-    required this.initialCaptureMode,
-    required this.sensor,
-    required this.flashMode,
-    required this.zoom,
-    required this.availableModes,
-    required this.exifPreferences,
-    required this.enableAudio,
-    required this.progressIndicator,
-    required this.picturePathBuilder,
-    required this.videoPathBuilder,
-    required this.onMediaTap,
-    required this.builder,
-    this.onImageForAnalysis,
-    this.imageAnalysisConfig,
-    this.aspectRatio,
-  });
-
-  final double? aspectRatio;
-
-  // Initial camera config
-  final CaptureModes initialCaptureMode;
-
+  /// [front] or [back] camera
   final Sensors sensor;
 
-  final CameraFlashes flashMode;
+  final FlashMode flashMode;
 
+  /// Must be a value between 0.0 (no zoom) and 1.0 (max zoom)
   final double zoom;
 
-  final List<CaptureModes> availableModes;
+  /// Ratio 1:1 is not supported yet on Android
+  final CameraAspectRatios aspectRatio;
 
+  /// choose if you want to persist user location in image metadata or not
   final ExifPreferences? exifPreferences;
 
+  /// check this for more details
+  /// https://api.flutter.dev/flutter/painting/BoxFit.html
+  // one of fitWidth, fitHeight, contain, cover
+  // currently only work for Android, this do nothing on iOS
+  final CameraPreviewFit previewFit;
+
+  /// Enable audio while video recording
   final bool enableAudio;
 
-  final FilePathBuilder picturePathBuilder;
+  /// Path builders when taking photos or recording videos
+  final SaveConfig saveConfig;
 
-  final FilePathBuilder videoPathBuilder;
-
+  /// Called when the preview of the last captured media is tapped
   final OnMediaTap onMediaTap;
 
   // Widgets
   final Widget? progressIndicator;
 
+  /// UI Builder
   final CameraLayoutBuilder builder;
 
   final OnImageForAnalysis? onImageForAnalysis;
 
+  /// only for Android
   final AnalysisConfig? imageAnalysisConfig;
+
+  /// Useful for drawing things based on AI Analysis above the CameraPreview for instance
+  final CameraLayoutBuilder? previewDecoratorBuilder;
+
+  final OnPreviewTap Function(CameraState)? onPreviewTapBuilder;
+  final OnPreviewScale Function(CameraState)? onPreviewScaleBuilder;
+
+  CameraAwesomeBuilder._({
+    required this.sensor,
+    required this.flashMode,
+    required this.zoom,
+    required this.aspectRatio,
+    required this.exifPreferences,
+    required this.enableAudio,
+    required this.progressIndicator,
+    required this.saveConfig,
+    required this.onMediaTap,
+    required this.builder,
+    required this.previewFit,
+    this.onImageForAnalysis,
+    this.imageAnalysisConfig,
+    this.onPreviewTapBuilder,
+    this.onPreviewScaleBuilder,
+    this.previewDecoratorBuilder,
+  });
+
+  /// Use the camera with the built-in interface.
+  ///
+  /// You need to provide an [SaveConfig] to define if you want to take
+  /// photos, videos or both and where to save them.
+  ///
+  /// You can initiate the camera with a few parameters:
+  /// - which [sensor] to use ([front] or [back])
+  /// - which [flashMode] to use
+  /// - how much zoom you want (0.0 = no zoom, 1.0 = max zoom)
+  /// - [enableAudio] when recording a video or not
+  /// - [exifPreferences] to indicate if you want to save GPS location when
+  /// taking photos
+  ///
+  /// You can customize the UI with a [progressIndicator] and you can define
+  /// what to do when the preview of the last media taken is tapped thanks to
+  /// [onMediaTap].
+  ///
+  /// If you want to do image analysis (for AI for instance), you can set the
+  /// [imageAnaysisConfig] and listen to the stream of images with
+  /// [onImageForAnalysis].
+  CameraAwesomeBuilder.awesome({
+    Sensors sensor = Sensors.back,
+    FlashMode flashMode = FlashMode.none,
+    double zoom = 0.0,
+    CameraAspectRatios aspectRatio = CameraAspectRatios.ratio_4_3,
+    ExifPreferences? exifPreferences,
+    bool enableAudio = true,
+    Widget? progressIndicator,
+    required SaveConfig saveConfig,
+    Function(MediaCapture)? onMediaTap,
+    OnImageForAnalysis? onImageForAnalysis,
+    AnalysisConfig? imageAnalysisConfig,
+    OnPreviewTap Function(CameraState)? onPreviewTapBuilder,
+    OnPreviewScale Function(CameraState)? onPreviewScaleBuilder,
+    CameraPreviewFit? previewFit,
+    CameraLayoutBuilder? previewDecoratorBuilder,
+  }) : this._(
+          sensor: sensor,
+          flashMode: flashMode,
+          zoom: zoom,
+          aspectRatio: aspectRatio,
+          exifPreferences: exifPreferences,
+          enableAudio: enableAudio,
+          progressIndicator: progressIndicator,
+          builder: (cameraModeState, previewSize, previewRect) =>
+              AwesomeCameraLayout(
+            state: cameraModeState,
+            onMediaTap: onMediaTap,
+          ),
+          saveConfig: saveConfig,
+          onMediaTap: onMediaTap,
+          onImageForAnalysis: onImageForAnalysis,
+          imageAnalysisConfig: imageAnalysisConfig,
+          onPreviewTapBuilder: onPreviewTapBuilder,
+          onPreviewScaleBuilder: onPreviewScaleBuilder,
+          previewFit: previewFit ?? CameraPreviewFit.cover,
+          previewDecoratorBuilder: previewDecoratorBuilder,
+        );
+
+  /// 🚧 Experimental
+  ///
+  /// Documentation on its way, API might change
+  CameraAwesomeBuilder.custom({
+    CaptureMode initialCaptureMode = CaptureMode.photo,
+    Sensors sensor = Sensors.back,
+    FlashMode flashMode = FlashMode.none,
+    double zoom = 0.0,
+    CameraAspectRatios aspectRatio = CameraAspectRatios.ratio_4_3,
+    ExifPreferences? exifPreferences,
+    bool enableAudio = true,
+    Widget? progressIndicator,
+    required CameraLayoutBuilder builder,
+    required SaveConfig saveConfig,
+    OnImageForAnalysis? onImageForAnalysis,
+    AnalysisConfig? imageAnalysisConfig,
+    OnPreviewTap Function(CameraState)? onPreviewTapBuilder,
+    OnPreviewScale Function(CameraState)? onPreviewScaleBuilder,
+    CameraPreviewFit? previewFit,
+  }) : this._(
+          sensor: sensor,
+          flashMode: flashMode,
+          zoom: zoom,
+          aspectRatio: aspectRatio,
+          exifPreferences: exifPreferences,
+          enableAudio: enableAudio,
+          progressIndicator: progressIndicator,
+          builder: builder,
+          saveConfig: saveConfig,
+          onMediaTap: null,
+          onImageForAnalysis: onImageForAnalysis,
+          imageAnalysisConfig: imageAnalysisConfig,
+          onPreviewTapBuilder: onPreviewTapBuilder,
+          onPreviewScaleBuilder: onPreviewScaleBuilder,
+          previewFit: previewFit ?? CameraPreviewFit.cover,
+          previewDecoratorBuilder: null,
+        );
 
   @override
   State<StatefulWidget> createState() {
@@ -191,12 +215,13 @@ class CameraAwesomeBuilder extends StatefulWidget {
 
 class _CameraWidgetBuilder extends State<CameraAwesomeBuilder>
     with WidgetsBindingObserver {
-  late CameraContext cameraContext;
+  late CameraContext _cameraContext;
+  final _cameraPreviewKey = GlobalKey<AwesomeCameraPreviewState>();
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    cameraContext.dispose();
+    _cameraContext.dispose();
     super.dispose();
   }
 
@@ -219,7 +244,8 @@ class _CameraWidgetBuilder extends State<CameraAwesomeBuilder>
       case AppLifecycleState.inactive:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-        cameraContext.state.stop();
+        _cameraContext.state
+            .when(onVideoRecordingMode: (mode) => mode.stopRecording());
         break;
     }
     super.didChangeAppLifecycleState(state);
@@ -230,31 +256,33 @@ class _CameraWidgetBuilder extends State<CameraAwesomeBuilder>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    cameraContext = CameraContext.create(
+    _cameraContext = CameraContext.create(
       SensorConfig(
         sensor: widget.sensor,
         flash: widget.flashMode,
         currentZoom: widget.zoom,
+        aspectRatio: widget.aspectRatio,
       ),
-      initialCaptureMode: widget.initialCaptureMode,
-      picturePathBuilder: widget.picturePathBuilder,
-      videoPathBuilder: widget.videoPathBuilder,
-      availableModes: widget.availableModes,
+      initialCaptureMode: widget.saveConfig.initialCaptureMode,
+      saveConfig: widget.saveConfig,
       onImageForAnalysis: widget.onImageForAnalysis,
       analysisConfig: widget.imageAnalysisConfig,
       exifPreferences:
           widget.exifPreferences ?? ExifPreferences(saveGPSLocation: false),
     );
 
-    cameraContext.state.start();
+    // Initial CameraState is always PreparingState
+    _cameraContext.state.when(onPreparingCamera: (mode) => mode.start());
   }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<CameraState>(
-      stream: cameraContext.state$,
+      stream: _cameraContext.state$,
       builder: (context, snapshot) {
-        if (!snapshot.hasData || snapshot.data!.captureMode == null) {
+        if (!snapshot.hasData ||
+            snapshot.data!.captureMode == null ||
+            snapshot.requireData is PreparingCameraState) {
           return widget.progressIndicator ??
               (Platform.isIOS
                   ? const CupertinoActivityIndicator()
@@ -263,16 +291,44 @@ class _CameraWidgetBuilder extends State<CameraAwesomeBuilder>
         return Stack(
           // fit: StackFit.expand,
           children: <Widget>[
-            PinchToZoom(
-              sensorConfig: cameraContext.sensorConfig,
-              child: CameraPreviewCovered(
-                aspectRatio: widget.aspectRatio,
-                key: UniqueKey(),
-              ),
-            ),
             Positioned.fill(
-              child: SafeArea(
-                child: widget.builder(snapshot.requireData),
+              child: AwesomeCameraPreview(
+                key: _cameraPreviewKey,
+                previewFit: widget.previewFit,
+                state: snapshot.requireData,
+                onPreviewTap: widget.onPreviewTapBuilder
+                        ?.call(snapshot.requireData) ??
+                    OnPreviewTap(
+                      onTap: (position, flutterPreviewSize, pixelPreviewSize) {
+                        snapshot.requireData.when(
+                          onPhotoMode: (photoState) => photoState.focusOnPoint(
+                            flutterPosition: position,
+                            pixelPreviewSize: pixelPreviewSize,
+                            flutterPreviewSize: flutterPreviewSize,
+                          ),
+                          onVideoMode: (videoState) => videoState.focusOnPoint(
+                            flutterPosition: position,
+                            pixelPreviewSize: pixelPreviewSize,
+                            flutterPreviewSize: flutterPreviewSize,
+                          ),
+                          onVideoRecordingMode: (videoRecState) =>
+                              videoRecState.focusOnPoint(
+                            flutterPosition: position,
+                            pixelPreviewSize: pixelPreviewSize,
+                            flutterPreviewSize: flutterPreviewSize,
+                          ),
+                        );
+                      },
+                    ),
+                onPreviewScale:
+                    widget.onPreviewScaleBuilder?.call(snapshot.requireData) ??
+                        OnPreviewScale(
+                          onScale: (scale) {
+                            snapshot.requireData.sensorConfig.setZoom(scale);
+                          },
+                        ),
+                interfaceBuilder: widget.builder,
+                previewDecoratorBuilder: widget.previewDecoratorBuilder,
               ),
             ),
           ],

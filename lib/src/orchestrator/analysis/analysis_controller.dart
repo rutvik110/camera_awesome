@@ -20,11 +20,11 @@ class AnalysisController {
 
   factory AnalysisController.fromPlugin({
     OnImageForAnalysis? onImageListener,
-    required AnalysisConfig conf,
+    required AnalysisConfig? conf,
   }) =>
       AnalysisController(
         onImageListener: onImageListener,
-        conf: conf,
+        conf: conf == null ? AnalysisConfig() : conf,
         images$: CamerawesomePlugin.listenCameraImages(),
       );
 
@@ -37,10 +37,13 @@ class AnalysisController {
       printLog('AnalysisController controller already started');
       return;
     }
+
     await CamerawesomePlugin.setupAnalysis(
       format: conf.outputFormat,
-      width: 1024,
+      width: conf.width,
+      maxFramesPerSecond: conf.maxFramesPerSecond,
     );
+
     imageSubscription = _images$?.listen((event) {
       onImageListener!(AnalysisImage.from(event));
     });
