@@ -23,6 +23,9 @@ abstract class CameraInterface {
   @async
   bool setupCamera(
     String sensor,
+    String aspectRatio,
+    double zoom,
+    String flashMode,
     String captureMode,
     bool enableImageStream,
     ExifPreferences exifPreferences,
@@ -44,7 +47,8 @@ abstract class CameraInterface {
 
   void resumeVideoRecording();
 
-  void stopRecordingVideo();
+  @async
+  bool stopRecordingVideo();
 
   bool start();
 
@@ -53,6 +57,8 @@ abstract class CameraInterface {
   void setFlashMode(String mode);
 
   void handleAutoFocus();
+
+  void focusOnPoint(PreviewSize previewSize, double x, double y);
 
   void setZoom(double zoom);
 
@@ -80,7 +86,11 @@ abstract class CameraInterface {
 
   void setAspectRatio(String aspectRatio);
 
-  void setupImageAnalysisStream(String format, int width);
+  void setupImageAnalysisStream(
+    String format,
+    int width,
+    double? maxFramesPerSecond,
+  );
 
   void setExifPreferences(ExifPreferences exifPreferences);
 }

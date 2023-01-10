@@ -5,7 +5,11 @@ import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.location.Location
+import android.os.CountDownTimer
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
+import android.util.Rational
 import android.util.Size
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -28,13 +32,14 @@ import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
 import io.flutter.plugin.common.EventChannel
 import io.flutter.view.TextureRegistry
+import io.reactivex.rxjava3.disposables.Disposable
+import io.reactivex.rxjava3.subjects.BehaviorSubject
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 enum class CaptureModes {
-    PHOTO,
-    VIDEO,
+    PHOTO, VIDEO,
 }
 
 class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
@@ -52,11 +57,16 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var exifPreferences: ExifPreferences
     private var cancellationTokenSource = CancellationTokenSource()
+    private var lastRecordedVideo: BehaviorSubject<Boolean>? = null
+    private var lastRecordedVideoSubscription: Disposable? = null
 
 
     @SuppressLint("RestrictedApi")
     override fun setupCamera(
         sensor: String,
+        aspectRatio: String,
+        zoom: Double,
+        flashMode: String,
         captureMode: String,
         enableImageStream: Boolean,
         exifPreferences: ExifPreferences,
@@ -67,37 +77,57 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
             activity!!
         )
         val cameraProvider = future.get()
-        orientationStreamListener = OrientationStreamListener(activity!!, sensorOrientationListener)
         textureEntry = textureRegistry!!.createSurfaceTexture()
 
         val cameraSelector =
             if (CameraSensor.valueOf(sensor) == CameraSensor.BACK) CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
 
-        cameraState = CameraXState(
-            textureRegistry!!,
+        cameraState = CameraXState(textureRegistry!!,
             textureEntry!!,
             cameraProvider = cameraProvider,
             cameraSelector = cameraSelector,
             currentCaptureMode = CaptureModes.valueOf(captureMode),
             enableImageStream = enableImageStream,
-            onStreamReady = { state -> state.updateLifecycle(activity!!) }
-        )
+            onStreamReady = { state -> state.updateLifecycle(activity!!) }).apply {
+            this.aspectRatio = if (aspectRatio == "RATIO_16_9") 1 else 0
+            this.flashMode = FlashMode.valueOf(flashMode)
+        }
+        orientationStreamListener =
+            OrientationStreamListener(activity!!, listOf(sensorOrientationListener, cameraState))
+
         if (enableImageStream) {
             imageStreamChannel.setStreamHandler(cameraState)
         }
 
         cameraState.updateLifecycle(activity!!)
+        // Zoom should be set after updateLifeCycle
+        if (zoom > 0) {
+            // TODO Find a better way to set initial zoom than using a postDelayed
+            Handler(Looper.getMainLooper()).postDelayed({
+                cameraState.previewCamera!!.cameraControl.setLinearZoom(zoom.toFloat())
+            }, 200)
+        }
+
         callback(true)
     }
 
-    override fun setupImageAnalysisStream(format: String, width: Long) {
+    override fun setupImageAnalysisStream(
+        format: String,
+        width: Long,
+        maxFramesPerSecond: Double?
+    ) {
         cameraState.apply {
             try {
                 this.imageAnalysisBuilder = ImageAnalysisBuilder.configure(
                     aspectRatio ?: AspectRatio.RATIO_4_3,
-                    OutputImageFormat.valueOf(format.uppercase()),
-                    executor(activity!!),
-                    width
+                    when (format.uppercase()) {
+                        "YUV_420" -> OutputImageFormat.YUV_420_888
+                        "NV21" -> OutputImageFormat.NV21
+                        "JPEG" -> OutputImageFormat.JPEG
+                        else -> OutputImageFormat.NV21
+                    },
+                    executor(activity!!), width,
+                    maxFramesPerSecond = maxFramesPerSecond,
                 )
                 updateLifecycle(activity!!)
             } catch (e: Exception) {
@@ -137,25 +167,19 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
      * [fusedLocationClient.lastLocation] instead to go faster
      */
     private fun retrieveLocation(callback: (Location?) -> Unit) {
-        if (exifPreferences.saveGPSLocation &&
-            ActivityCompat.checkSelfPermission(
-                activity!!,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) ==
-            PackageManager.PERMISSION_GRANTED
+        if (exifPreferences.saveGPSLocation && ActivityCompat.checkSelfPermission(
+                activity!!, Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
         ) {
             fusedLocationClient.getCurrentLocation(
-                Priority.PRIORITY_HIGH_ACCURACY,
-                cancellationTokenSource.token
+                Priority.PRIORITY_HIGH_ACCURACY, cancellationTokenSource.token
             ).addOnCompleteListener {
                 if (it.isSuccessful) {
                     callback(it.result)
                 } else {
                     if (it.exception != null) {
                         Log.e(
-                            CamerawesomePlugin.TAG,
-                            "Error finding location",
-                            it.exception
+                            CamerawesomePlugin.TAG, "Error finding location", it.exception
                         )
                     }
                     callback(null)
@@ -176,14 +200,13 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
 
     @SuppressLint("RestrictedApi")
     private fun takePhotoWith(
-        imageFile: File,
-        callback: (Boolean) -> Unit
+        imageFile: File, callback: (Boolean) -> Unit
     ) {
-        val outputFileOptions = ImageCapture.OutputFileOptions
-            .Builder(imageFile)
-            .setMetadata(ImageCapture.Metadata())
-            .build()
+        val outputFileOptions =
+            ImageCapture.OutputFileOptions.Builder(imageFile).setMetadata(ImageCapture.Metadata())
+                .build()
 
+        cameraState.imageCapture!!.targetRotation = orientationStreamListener!!.surfaceOrientation
         cameraState.imageCapture!!.takePicture(
             outputFileOptions,
             ContextCompat.getMainExecutor(activity!!),
@@ -192,15 +215,22 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
                 override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
                     Log.d(
                         CamerawesomePlugin.TAG,
-                        "Success capturing picture ${outputFileResults.savedUri}"
+                        "Success capturing picture ${outputFileResults.savedUri}, with location: ${exifPreferences.saveGPSLocation}"
                     )
                     if (exifPreferences.saveGPSLocation) {
                         retrieveLocation {
-                            Log.d("Location retrieved", "${it?.latitude}x${it?.longitude}")
                             outputFileOptions.metadata.location = it
+                            // We need to actually save the exif data to the file system, not just
+                            // the property to an object like above line
+                            val exif: androidx.exifinterface.media.ExifInterface =
+                                androidx.exifinterface.media.ExifInterface(outputFileResults.savedUri!!.path!!)
+                            exif.setGpsInfo(it)
+                            exif.saveAttributes()
+                            callback(true)
                         }
+                    } else {
+                        callback(true)
                     }
-                    callback(true)
                 }
 
                 override fun onError(exception: ImageCaptureException) {
@@ -210,7 +240,10 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
             })
     }
 
+    @SuppressLint("RestrictedApi")
     override fun recordVideo(path: String) {
+        lastRecordedVideoSubscription?.dispose()
+        lastRecordedVideo = BehaviorSubject.create()
         val recordingListener = Consumer<VideoRecordEvent> { event ->
             when (event) {
                 is VideoRecordEvent.Start -> {
@@ -222,30 +255,48 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
                             CamerawesomePlugin.TAG,
                             "Video capture succeeded: ${event.outputResults.outputUri}"
                         )
+                        lastRecordedVideo!!.onNext(true)
                     } else {
                         // update app state when the capture failed.
                         cameraState.apply {
                             recording?.close()
                             recording = null
                         }
-                        Log.d(
-                            CamerawesomePlugin.TAG,
-                            "Video capture ends with error: ${event.error}"
+                        Log.e(
+                            CamerawesomePlugin.TAG, "Video capture ends with error: ${event.error}"
                         )
-
+                        lastRecordedVideo!!.onNext(false)
                     }
                 }
             }
         }
+        cameraState.videoCapture!!.targetRotation = orientationStreamListener!!.surfaceOrientation
         cameraState.recording = cameraState.videoCapture!!.output.prepareRecording(
-            activity!!,
-            FileOutputOptions.Builder(File(path)).build()
+            activity!!, FileOutputOptions.Builder(File(path)).build()
         ).apply { if (cameraState.enableAudioRecording) withAudioEnabled() }
             .start(cameraState.executor(activity!!), recordingListener)
     }
 
-    override fun stopRecordingVideo() {
+    override fun stopRecordingVideo(callback: (Boolean) -> Unit) {
+        var submitted = false
+        val countDownTimer = object : CountDownTimer(5000, 5000) {
+            override fun onTick(interval: Long) {}
+            override fun onFinish() {
+                if (!submitted) {
+                    submitted = true
+                    callback(false)
+                }
+            }
+        }
+        countDownTimer.start()
         cameraState.recording?.stop()
+        lastRecordedVideoSubscription = lastRecordedVideo!!.subscribe {
+            countDownTimer.cancel()
+            if (!submitted) {
+                submitted = true
+                callback(it)
+            }
+        }
     }
 
     override fun pauseVideoRecording() {
@@ -286,12 +337,16 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
     @SuppressLint("RestrictedApi")
     override fun setSensor(sensor: String) {
         val cameraSelector =
-            if (CameraSensor.valueOf(sensor) == CameraSensor.BACK)
-                CameraSelector.DEFAULT_BACK_CAMERA
-            else
-                CameraSelector.DEFAULT_FRONT_CAMERA
+            if (CameraSensor.valueOf(sensor) == CameraSensor.BACK) CameraSelector.DEFAULT_BACK_CAMERA
+            else CameraSelector.DEFAULT_FRONT_CAMERA
         cameraState.apply {
             this.cameraSelector = cameraSelector
+            // Also reset flash mode and aspect ratio
+            this.flashMode = FlashMode.NONE
+            this.aspectRatio = null
+            this.rational = Rational(3, 4)
+            // Zoom should be reset automatically
+
             updateLifecycle(activity!!)
         }
     }
@@ -301,8 +356,9 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
         val range = cameraState.previewCamera?.cameraInfo?.exposureState?.exposureCompensationRange
         if (range != null) {
             val actualBrightnessValue = brightness * (range.upper - range.lower) + range.lower
-            cameraState.previewCamera?.cameraControl
-                ?.setExposureCompensationIndex(actualBrightnessValue.roundToInt())
+            cameraState.previewCamera?.cameraControl?.setExposureCompensationIndex(
+                actualBrightnessValue.roundToInt()
+            )
         }
     }
 
@@ -311,12 +367,10 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
     }
 
     override fun focus() {
-        val autoFocusPoint = SurfaceOrientedMeteringPointFactory(1f, 1f)
-            .createPoint(.5f, .5f)
+        val autoFocusPoint = SurfaceOrientedMeteringPointFactory(1f, 1f).createPoint(.5f, .5f)
         try {
             val autoFocusAction = FocusMeteringAction.Builder(
-                autoFocusPoint,
-                FocusMeteringAction.FLAG_AF
+                autoFocusPoint, FocusMeteringAction.FLAG_AF
             ).apply {
                 //start auto-focusing after 2 seconds
                 setAutoCancelDuration(2, TimeUnit.SECONDS)
@@ -327,17 +381,15 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
         }
     }
 
-    // TODO Use this in CamerAwesome lib
-    fun focusOnPoint(size: PreviewSize, x: Double, y: Double) {
+    override fun focusOnPoint(previewSize: PreviewSize, x: Double, y: Double) {
         val factory: MeteringPointFactory = SurfaceOrientedMeteringPointFactory(
-            size.width.toFloat(), size.height.toFloat(),
+            previewSize.width.toFloat(), previewSize.height.toFloat(),
         )
         val autoFocusPoint = factory.createPoint(x.toFloat(), y.toFloat())
         try {
             cameraState.previewCamera!!.cameraControl.startFocusAndMetering(
                 FocusMeteringAction.Builder(
-                    autoFocusPoint,
-                    FocusMeteringAction.FLAG_AF
+                    autoFocusPoint, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE
                 ).apply {
                     //focus only when the user tap the preview
                     disableAutoCancel()
@@ -368,8 +420,7 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
     override fun availableSizes(): List<PreviewSize> {
         return cameraState.previewSizes().map {
             PreviewSize(
-                width = it.width.toDouble(),
-                height = it.height.toDouble()
+                width = it.width.toDouble(), height = it.height.toDouble()
             )
         }
     }
@@ -382,7 +433,16 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
     override fun getEffectivPreviewSize(): PreviewSize {
         val res = cameraState.preview!!.resolutionInfo?.resolution
         return if (res != null) {
-            PreviewSize(res.width.toDouble(), res.height.toDouble())
+            val rota90 = 90
+            val rota270 = 270
+            when (cameraState.preview!!.resolutionInfo?.rotationDegrees) {
+                rota90, rota270 -> {
+                    PreviewSize(res.height.toDouble(), res.width.toDouble())
+                }
+                else -> {
+                    PreviewSize(res.width.toDouble(), res.height.toDouble())
+                }
+            }
         } else {
             PreviewSize(0.0, 0.0)
         }
@@ -404,18 +464,14 @@ class CameraAwesomeX : CameraInterface, FlutterPlugin, ActivityAware {
         }
     }
 
-    override fun setAspectRatio(value: String) {
+    override fun setAspectRatio(aspectRatio: String) {
         cameraState.apply {
-            aspectRatio = when (value) {
-                AspectRatio.RATIO_16_9.toString() -> {
-                    AspectRatio.RATIO_16_9
-                }
-                AspectRatio.RATIO_4_3.toString() -> {
-                    AspectRatio.RATIO_4_3
-                }
-                else -> {
-                    null
-                }
+            // In CameraX, aspect ratio is an Int. RATIO_4_3 = 0 (default), RATIO_16_9 = 1
+            this.aspectRatio = if (aspectRatio == "RATIO_16_9") 1 else 0
+            this.rational = when (aspectRatio) {
+                "RATIO_16_9" -> Rational(9, 16)
+                "RATIO_1_1" -> Rational(1, 1)
+                else -> Rational(3, 4)
             }
             updateLifecycle(activity!!)
         }

@@ -16,42 +16,6 @@ FlutterEventSink imageStreamEventSink;
 
 @end
 
-@implementation OrientationStreamHandler
-- (FlutterError*)onListenWithArguments:(id)arguments eventSink:(FlutterEventSink)eventSink {
-  orientationEventSink = eventSink;
-  return nil;
-}
-
-- (FlutterError*)onCancelWithArguments:(id)arguments {
-  orientationEventSink = nil;
-  return nil;
-}
-@end
-
-@implementation ImageStreamHandler
-- (FlutterError*)onListenWithArguments:(id)arguments eventSink:(FlutterEventSink)eventSink {
-  imageStreamEventSink = eventSink;
-  return nil;
-}
-
-- (FlutterError*)onCancelWithArguments:(id)arguments {
-  imageStreamEventSink = nil;
-  return nil;
-}
-@end
-
-@implementation VideoRecordingStreamHandler
-- (FlutterError*)onListenWithArguments:(id)arguments eventSink:(FlutterEventSink)eventSink {
-  videoRecordingEventSink = eventSink;
-  return nil;
-}
-
-- (FlutterError*)onCancelWithArguments:(id)arguments {
-  videoRecordingEventSink = nil;
-  return nil;
-}
-@end
-
 @implementation CamerawesomePlugin {
   dispatch_queue_t _dispatchQueue;
 }
@@ -68,27 +32,51 @@ FlutterEventSink imageStreamEventSink;
 + (void)registerWithRegistrar:(NSObject<FlutterPluginRegistrar>*)registrar {
   CamerawesomePlugin *instance = [[CamerawesomePlugin alloc] initWithRegistry:[registrar textures] messenger:[registrar messenger]];
   
-  OrientationStreamHandler *orientationStreamHandler =
-  [[OrientationStreamHandler alloc] init];
   FlutterEventChannel *orientationChannel = [FlutterEventChannel eventChannelWithName:@"camerawesome/orientation"
                                                                       binaryMessenger:[registrar messenger]];
-  [orientationChannel setStreamHandler:orientationStreamHandler];
-  
-  VideoRecordingStreamHandler *videoRecordingStreamHandler =
-  [[VideoRecordingStreamHandler alloc] init];
-  FlutterEventChannel *videoRecordingChannel = [FlutterEventChannel eventChannelWithName:@"camerawesome/video-recording"
-                                                                         binaryMessenger:[registrar messenger]];
-  [videoRecordingChannel setStreamHandler:videoRecordingStreamHandler];
-  
-  ImageStreamHandler *imageStreamHandler =
-  [[ImageStreamHandler alloc] init];
   FlutterEventChannel *imageStreamChannel = [FlutterEventChannel eventChannelWithName:@"camerawesome/images"
                                                                       binaryMessenger:[registrar messenger]];
-  [imageStreamChannel setStreamHandler:imageStreamHandler];
+  [orientationChannel setStreamHandler:instance];
+  [imageStreamChannel setStreamHandler:instance];
   
-  // TODO: Change to "camerawesome/methods"
   FlutterMethodChannel *methodChannel = [FlutterMethodChannel methodChannelWithName:@"camerawesome" binaryMessenger:[registrar messenger]];
   [registrar addMethodCallDelegate:instance channel:methodChannel];
+}
+
+- (FlutterError *)onListenWithArguments:(NSString *)arguments eventSink:(FlutterEventSink)eventSink {
+  if ([arguments  isEqual: @"orientationChannel"]) {
+    orientationEventSink = eventSink;
+    
+    if (self.camera != nil) {
+      [self.camera setOrientationEventSink:orientationEventSink];
+    }
+    
+  } else if ([arguments  isEqual: @"imagesChannel"]) {
+    imageStreamEventSink = eventSink;
+    
+    if (self.camera != nil) {
+      [self.camera setImageStreamEvent:imageStreamEventSink];
+    }
+  }
+  
+  return nil;
+}
+
+- (FlutterError *)onCancelWithArguments:(NSString *)arguments {
+  if ([arguments  isEqual: @"orientationChannel"]) {
+    orientationEventSink = nil;
+    
+    if (self.camera != nil && self.camera.motionController != nil) {
+      [self.camera setOrientationEventSink:orientationEventSink];
+    }
+  } else if ([arguments  isEqual: @"imagesChannel"]) {
+    imageStreamEventSink = nil;
+    
+    if (self.camera != nil) {
+      [self.camera setImageStreamEvent:imageStreamEventSink];
+    }
+  }
+  return nil;
 }
 
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
@@ -107,10 +95,6 @@ FlutterEventSink imageStreamEventSink;
     [self _handleSetup:call result:result];
   } else if ([@"checkPermissions" isEqualToString:call.method]) {
     [self _handleCheckPermissions:call result:result];
-  } else if ([@"requestPermissions" isEqualToString:call.method]) {
-    // Not possible on iOS
-    result(FlutterMethodNotImplemented);
-    return;
   } else if ([@"start" isEqualToString:call.method]) {
     [self _handleStart:call result:result];
   } else if ([@"stop" isEqualToString:call.method]) {
@@ -139,8 +123,8 @@ FlutterEventSink imageStreamEventSink;
     [self _handleStopRecordingVideo:call result:result];
   } else if ([@"setRecordingAudioMode" isEqualToString:call.method]) {
     [self _handleRecordingAudioMode:call result:result];
-  } else if ([@"handleAutoFocus" isEqualToString:call.method]) {
-    [self _handleAutoFocus:call result:result];
+  } else if ([@"focusOnPoint" isEqualToString:call.method]) {
+    [self _handleFocusOnPoint:call result:result];
   } else if ([@"setFlashMode" isEqualToString:call.method]) {
     [self _handleFlashMode:call result:result];
   } else if ([@"setAspectRatio" isEqualToString:call.method]) {
@@ -155,6 +139,12 @@ FlutterEventSink imageStreamEventSink;
     [self _handleGetMaxZoom:call result:result];
   } else if ([@"setExifPreferences" isEqualToString:call.method]) {
     [self _handleSetExifPreferences:call result:result];
+  } else if ([@"setupAnalysis" isEqualToString:call.method]) {
+    [self _handleSetupAnalysis:call result:result];
+  } else if ([@"receivedImageFromStream" isEqualToString:call.method]) {
+    [self _handleReceivedImageFromStream:call result:result];
+  } else if ([@"getSensors" isEqualToString:call.method]) {
+    [self _handleGetSensors:call result:result];
   } else if ([@"dispose" isEqualToString:call.method]) {
     [self _handleDispose:call result:result];
   } else {
@@ -188,6 +178,10 @@ FlutterEventSink imageStreamEventSink;
   [self.camera pauseVideoRecording];
 }
 
+- (void)_handleReceivedImageFromStream:(FlutterMethodCall*)call result:(FlutterResult)result {
+  [self.camera receivedImageFromStream];
+}
+
 - (void)_handleResumeVideoRecording:(FlutterMethodCall*)call result:(FlutterResult)result {
   [self.camera resumeVideoRecording];
 }
@@ -197,11 +191,31 @@ FlutterEventSink imageStreamEventSink;
   [_camera setRecordingAudioMode:value];
 }
 
+- (void)_handleSetupAnalysis:(FlutterMethodCall*)call result:(FlutterResult)result {
+  float maxFramesPerSecond = [call.arguments[@"maxFramesPerSecond"] floatValue];
+  
+  // Force a frame rate to improve performance
+  [_camera.imageStreamController setMaxFramesPerSecond:maxFramesPerSecond];
+  
+  result(nil);
+}
+
+- (void)_handleGetSensors:(FlutterMethodCall*)call result:(FlutterResult)result {
+  NSArray *frontSensors = [_camera getSensors:AVCaptureDevicePositionFront];
+  NSArray *backSensors = [_camera getSensors:AVCaptureDevicePositionBack];
+  
+  result(@{
+    @"front": frontSensors,
+    @"back": backSensors
+  });
+}
+
 - (void)_handleGetEffectivPreviewSize:(FlutterMethodCall*)call result:(FlutterResult)result {
   CGSize previewSize = [_camera getEffectivPreviewSize];
+  // height & width are inverted, this is intentionnal, because camera is always on portrait mode
   result(@{
-    @"width": [NSNumber numberWithInt:previewSize.width],
-    @"height": [NSNumber numberWithInt:previewSize.height],
+    @"width": [NSNumber numberWithInt:previewSize.height],
+    @"height": [NSNumber numberWithInt:previewSize.width],
   });
 }
 
@@ -232,14 +246,20 @@ FlutterEventSink imageStreamEventSink;
 }
 
 - (void)_handleRecordVideo:(FlutterMethodCall*)call result:(FlutterResult)result {
+  if (_camera.imageStreamController.streamImages == true) {
+    result([FlutterError errorWithCode:@"STREAM_IN_PROGRESS" message:@"camera stream is in progress, please stop streaming before" details:nil]);
+    return;
+  }
+  
   NSString *path = call.arguments[@"path"];
+  NSDictionary *options = call.arguments[@"options"];
   
   if (path == nil || path.length <= 0) {
     result([FlutterError errorWithCode:@"PATH_NOT_SET" message:@"a file path must be set" details:nil]);
     return;
   }
   
-  [_camera recordVideoAtPath:path];
+  [_camera recordVideoAtPath:path withOptions:options];
 }
 
 - (void)_handleStopRecordingVideo:(FlutterMethodCall*)call result:(FlutterResult)result {
@@ -248,10 +268,14 @@ FlutterEventSink imageStreamEventSink;
 
 - (void)_handleSetSensor:(FlutterMethodCall*)call result:(FlutterResult)result {
   NSString *sensorName = call.arguments[@"sensor"];
-  // TODO: Return a list of all available cameras to front & then choice in a list the device ID wanted
-  CameraSensor sensor = ([sensorName isEqualToString:@"FRONT"]) ? Front : Back;
+  NSString *captureDeviceId;
   
-  [_camera setSensor:sensor];
+  if (call.arguments[@"deviceId"] && call.arguments[@"deviceId"] != [NSNull null]) {
+    captureDeviceId = call.arguments[@"deviceId"];
+  }
+  
+  CameraSensor sensor = ([sensorName isEqualToString:@"FRONT"]) ? Front : Back;
+  [_camera setSensor:sensor deviceId:captureDeviceId];
   
   result(nil);
 }
@@ -265,16 +289,27 @@ FlutterEventSink imageStreamEventSink;
   result(nil);
 }
 
-- (void)_handleAutoFocus:(FlutterMethodCall*)call result:(FlutterResult)result {
-  [_camera instantFocus];
+- (void)_handleFocusOnPoint:(FlutterMethodCall*)call result:(FlutterResult)result {
+  float positionX = [call.arguments[@"positionX"] floatValue];
+  float positionY = [call.arguments[@"positionY"] floatValue];
+  
+  float previewWidth = [call.arguments[@"previewWidth"] floatValue];
+  float previewHeight = [call.arguments[@"previewHeight"] floatValue];
+  
+  if (previewWidth <= 0 || previewHeight <= 0) {
+    result([FlutterError errorWithCode:@"INVALID_PREVIEW" message:@"preview size width and height must be set" details:nil]);
+    return;
+  }
+  
+  [_camera focusOnPoint:CGPointMake(positionX, positionY) preview:CGSizeMake(previewWidth, previewHeight)];
 }
 
 - (void)_handleCheckPermissions:(FlutterMethodCall*)call result:(FlutterResult)result {
-  result(@([CameraPermissions checkPermissions]));
+  result(@([PermissionsController checkCameraPermission]));
 }
 
 - (void)_handleSizes:(FlutterMethodCall*)call result:(FlutterResult)result {
-  result([_camera getSizes]);
+  result([CameraQualities captureFormatsForDevice:_camera.captureDevice]);
 }
 
 - (void)_handlePreviewSize:(FlutterMethodCall*)call result:(FlutterResult)result {
@@ -354,7 +389,7 @@ FlutterEventSink imageStreamEventSink;
   
   CaptureModes captureMode = ([captureModeName isEqualToString:@"PHOTO"]) ? Photo : Video;
   
-  if (![CameraPermissions checkPermissions]) {
+  if (![PermissionsController checkCameraPermission]) {
     result([FlutterError errorWithCode:@"MISSING_PERMISSION" message:@"you got to accept all permissions" details:nil]);
     return;
   }
@@ -370,10 +405,7 @@ FlutterEventSink imageStreamEventSink;
                                                 captureMode:captureMode
                                                      result:result
                                               dispatchQueue:_dispatchQueue
-                                                  messenger:_messenger
-                                           orientationEvent:orientationEventSink
-                                        videoRecordingEvent:videoRecordingEventSink
-                                           imageStreamEvent:imageStreamEventSink];
+                                                  messenger:_messenger];
   [self->_registry textureFrameAvailable:_textureId];
   
   __weak typeof(self) weakSelf = self;

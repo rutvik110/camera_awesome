@@ -9,17 +9,33 @@
 
 @implementation ImageStreamController
 
-- (instancetype)initWithEventSink:(FlutterEventSink)imageStreamEventSink {
+NSInteger const MaxPendingProcessedImage = 4;
+
+- (instancetype)initWithStreamImages:(bool)streamImages {
   self = [super init];
-  _imageStreamEventSink = imageStreamEventSink;
-  _streamImages = imageStreamEventSink != nil;
+  _streamImages = streamImages;
+  _processingImage = 0;
   return self;
 }
 
 # pragma mark - Camera Delegates
-- (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
+- (void)captureOutput:(AVCaptureOutput *)output didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection orientation:(UIDeviceOrientation)orientation {
+  if (_imageStreamEventSink == nil) {
+    return;
+  }
+
+  [self fpsGuard];
+  [self overflowCrashingGuard];
+  
+  _processingImage++;
+  
   CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
   CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+  
+  size_t imageWidth = CVPixelBufferGetWidth(pixelBuffer);
+  size_t imageHeight = CVPixelBufferGetHeight(pixelBuffer);
+  
+  NSMutableArray *planes = [NSMutableArray array];
   
   const Boolean isPlanar = CVPixelBufferIsPlanar(pixelBuffer);
   size_t planeCount;
@@ -29,7 +45,6 @@
     planeCount = 1;
   }
   
-  FlutterStandardTypedData *data;
   for (int i = 0; i < planeCount; i++) {
     void *planeAddress;
     size_t bytesPerRow;
@@ -50,13 +65,94 @@
     
     NSNumber *length = @(bytesPerRow * height);
     NSData *bytes = [NSData dataWithBytes:planeAddress length:length.unsignedIntegerValue];
-    data = [FlutterStandardTypedData typedDataWithBytes:bytes];
+    
+    [planes addObject:@{
+      @"bytesPerRow": @(bytesPerRow),
+      @"width": @(width),
+      @"height": @(height),
+      @"bytes": [FlutterStandardTypedData typedDataWithBytes:bytes],
+    }];
   }
   
-  // Only send bytes for now
-  _imageStreamEventSink(data);
-  
   CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+  
+  NSDictionary *imageBuffer = @{
+    @"width": [NSNumber numberWithUnsignedLong:imageWidth],
+    @"height": [NSNumber numberWithUnsignedLong:imageHeight],
+    @"format": @"bgra8888", // TODO: change this dynamically
+    @"planes": planes,
+    @"rotation": [self getInputImageOrientation:orientation]
+  };
+  
+  dispatch_async(dispatch_get_main_queue(), ^{
+    self->_imageStreamEventSink(imageBuffer);
+  });
+  
+}
+
+- (NSString *)getInputImageOrientation:(UIDeviceOrientation)orientation {
+  switch (orientation) {
+    case UIDeviceOrientationLandscapeLeft:
+      return @"rotation90deg";
+    case UIDeviceOrientationLandscapeRight:
+      return @"rotation270deg";
+    case UIDeviceOrientationPortrait:
+      return @"rotation0deg";
+    case UIDeviceOrientationPortraitUpsideDown:
+      return @"rotation180deg";
+    default:
+      return @"rotation0deg";
+  }
+}
+
+#pragma mark - Guards
+
+- (void)fpsGuard {
+  // calculate time interval between latest emitted frame
+  NSDate *nowDate = [NSDate date];
+  NSTimeInterval secondsBetween = [nowDate timeIntervalSinceDate:_latestEmittedFrame];
+  
+  // fps limit check, ignored if nil or == 0
+  if (_maxFramesPerSecond && _maxFramesPerSecond > 0) {
+    if (secondsBetween <= (1 / _maxFramesPerSecond)) {
+      // skip image because out of time
+      return;
+    }
+  }
+}
+
+- (void)overflowCrashingGuard {
+  // overflow crash prevent condition
+  if (_processingImage > MaxPendingProcessedImage) {
+    // too many frame are pending processing, skipping...
+    // this prevent crashing on older phones like iPhone 6, 7...
+    return;
+  }
+}
+
+// This is used to know the exact time when the image was received on the Flutter part
+- (void)receivedImageFromStream {
+  // used for the fps limit condition
+  _latestEmittedFrame = [NSDate date];
+  
+  // used for the overflow prevent crashing condition
+  if (_processingImage >= 0) {
+    _processingImage--;
+  }
+}
+
+#pragma mark - Setters
+
+- (void)setImageStreamEventSink:(FlutterEventSink)imageStreamEventSink {
+  _imageStreamEventSink = imageStreamEventSink;
+}
+
+- (void)setMaxFramesPerSecond:(float)maxFramesPerSecond {
+  _maxFramesPerSecond = maxFramesPerSecond;
+}
+
+- (void)setStreamImages:(bool)streamImages {
+  _streamImages = streamImages;
 }
 
 @end

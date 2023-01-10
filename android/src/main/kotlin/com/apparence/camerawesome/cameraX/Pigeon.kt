@@ -97,7 +97,7 @@ private object CameraInterfaceCodec : StandardMessageCodec() {
 
 /** Generated interface from Pigeon that represents a handler of messages from Flutter. */
 interface CameraInterface {
-  fun setupCamera(sensor: String, captureMode: String, enableImageStream: Boolean, exifPreferences: ExifPreferences, callback: (Boolean) -> Unit)
+  fun setupCamera(sensor: String, aspectRatio: String, zoom: Double, flashMode: String, captureMode: String, enableImageStream: Boolean, exifPreferences: ExifPreferences, callback: (Boolean) -> Unit)
   fun checkPermissions(): List<String>
   fun requestPermissions(): List<String>
   fun getPreviewTextureId(): Double
@@ -105,11 +105,12 @@ interface CameraInterface {
   fun recordVideo(path: String)
   fun pauseVideoRecording()
   fun resumeVideoRecording()
-  fun stopRecordingVideo()
+  fun stopRecordingVideo(callback: (Boolean) -> Unit)
   fun start(): Boolean
   fun stop(): Boolean
   fun setFlashMode(mode: String)
   fun handleAutoFocus()
+  fun focusOnPoint(previewSize: PreviewSize, x: Double, y: Double)
   fun setZoom(zoom: Double)
   fun setSensor(sensor: String)
   fun setCorrection(brightness: Double)
@@ -123,7 +124,7 @@ interface CameraInterface {
   fun setPhotoSize(size: PreviewSize)
   fun setPreviewSize(size: PreviewSize)
   fun setAspectRatio(aspectRatio: String)
-  fun setupImageAnalysisStream(format: String, width: Long)
+  fun setupImageAnalysisStream(format: String, width: Long, maxFramesPerSecond: Double?)
   fun setExifPreferences(exifPreferences: ExifPreferences)
 
   companion object {
@@ -142,10 +143,13 @@ val codec: MessageCodec<Any?> by lazy {
             try {
               val args = message as List<Any?>
               val sensorArg = args[0] as String
-              val captureModeArg = args[1] as String
-              val enableImageStreamArg = args[2] as Boolean
-              val exifPreferencesArg = args[3] as ExifPreferences
-              api.setupCamera(sensorArg, captureModeArg, enableImageStreamArg, exifPreferencesArg) {
+              val aspectRatioArg = args[1] as String
+              val zoomArg = args[2] as Double
+              val flashModeArg = args[3] as String
+              val captureModeArg = args[4] as String
+              val enableImageStreamArg = args[5] as Boolean
+              val exifPreferencesArg = args[6] as ExifPreferences
+              api.setupCamera(sensorArg, aspectRatioArg, zoomArg, flashModeArg, captureModeArg, enableImageStreamArg, exifPreferencesArg) {
                 reply.reply(wrapResult(it))
               }
             } catch (exception: Error) {
@@ -284,12 +288,13 @@ val codec: MessageCodec<Any?> by lazy {
           channel.setMessageHandler { _, reply ->
             val wrapped = hashMapOf<String, Any?>()
             try {
-              api.stopRecordingVideo()
-              wrapped["result"] = null
+              api.stopRecordingVideo() {
+                reply.reply(wrapResult(it))
+              }
             } catch (exception: Error) {
               wrapped["error"] = wrapError(exception)
+              reply.reply(wrapped)
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)
@@ -353,6 +358,27 @@ val codec: MessageCodec<Any?> by lazy {
             val wrapped = hashMapOf<String, Any?>()
             try {
               api.handleAutoFocus()
+              wrapped["result"] = null
+            } catch (exception: Error) {
+              wrapped["error"] = wrapError(exception)
+            }
+            reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.CameraInterface.focusOnPoint", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val wrapped = hashMapOf<String, Any?>()
+            try {
+              val args = message as List<Any?>
+              val previewSizeArg = args[0] as PreviewSize
+              val xArg = args[1] as Double
+              val yArg = args[2] as Double
+              api.focusOnPoint(previewSizeArg, xArg, yArg)
               wrapped["result"] = null
             } catch (exception: Error) {
               wrapped["error"] = wrapError(exception)
@@ -606,7 +632,8 @@ val codec: MessageCodec<Any?> by lazy {
               val args = message as List<Any?>
               val formatArg = args[0] as String
               val widthArg = args[1].let { if (it is Int) it.toLong() else it as Long }
-              api.setupImageAnalysisStream(formatArg, widthArg)
+              val maxFramesPerSecondArg = args[2] as? Double
+              api.setupImageAnalysisStream(formatArg, widthArg, maxFramesPerSecondArg)
               wrapped["result"] = null
             } catch (exception: Error) {
               wrapped["error"] = wrapError(exception)

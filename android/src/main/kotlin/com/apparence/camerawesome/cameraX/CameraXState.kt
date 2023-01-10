@@ -2,6 +2,7 @@ package com.apparence.camerawesome.cameraX
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.util.Rational
 import android.util.Size
 import android.view.Surface
 import androidx.camera.camera2.internal.compat.CameraCharacteristicsCompat
@@ -14,6 +15,7 @@ import androidx.camera.video.VideoCapture
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.apparence.camerawesome.models.FlashMode
+import com.apparence.camerawesome.sensors.SensorOrientation
 import io.flutter.plugin.common.EventChannel
 import io.flutter.view.TextureRegistry
 import java.util.concurrent.Executor
@@ -37,11 +39,14 @@ data class CameraXState(
     var photoSize: Size? = null,
     var previewSize: Size? = null,
     var aspectRatio: Int? = null,
+    // Rational is used only in ratio 1:1
+    var rational: Rational = Rational(3, 4),
     var flashMode: FlashMode = FlashMode.NONE,
     val onStreamReady: (state: CameraXState) -> Unit,
-) : EventChannel.StreamHandler {
+) : EventChannel.StreamHandler, SensorOrientation {
 
     var imageAnalysisBuilder: ImageAnalysisBuilder? = null
+    var imageAnalysis: ImageAnalysis? = null
 
     val maxZoomRatio: Double
         get() = previewCamera!!.cameraInfo.zoomState.value!!.maxZoomRatio.toDouble()
@@ -57,25 +62,24 @@ data class CameraXState(
     @SuppressLint("RestrictedApi", "UnsafeOptInUsageError")
     fun updateLifecycle(activity: Activity) {
         // Preview
-        if(aspectRatio != null) {
-            preview = Preview.Builder()
-                    .setTargetAspectRatio(aspectRatio!!)
-                    .setCameraSelector(cameraSelector).build()
+        preview = if (aspectRatio != null) {
+            Preview.Builder().setTargetAspectRatio(aspectRatio!!).setCameraSelector(cameraSelector)
+                .build()
         } else {
-            preview = Preview.Builder()
-                    .setCameraSelector(cameraSelector).build()
+            Preview.Builder().setCameraSelector(cameraSelector).build()
         }
 
         preview!!.setSurfaceProvider(
             surfaceProvider(executor(activity))
         )
-
         if (currentCaptureMode == CaptureModes.PHOTO) {
-            imageCapture = ImageCapture.Builder()
-                .setCameraSelector(cameraSelector)
-                .setTargetAspectRatio(aspectRatio ?: AspectRatio.RATIO_4_3)
+            imageCapture = ImageCapture.Builder().setCameraSelector(cameraSelector)
+//                .setJpegQuality(100)
                 .apply {
-                    photoSize?.let { setTargetResolution(it) }
+                    //photoSize?.let { setTargetResolution(it) }
+                    if (rational.denominator != rational.numerator) {
+                        setTargetAspectRatio(aspectRatio ?: AspectRatio.RATIO_4_3)
+                    }
                     setFlashMode(
                         when (flashMode) {
                             FlashMode.ALWAYS, FlashMode.ON -> ImageCapture.FLASH_MODE_ON
@@ -83,12 +87,10 @@ data class CameraXState(
                             else -> ImageCapture.FLASH_MODE_OFF
                         }
                     )
-                }
-                .build()
+                }.build()
         } else {
-            recorder = Recorder.Builder()
-                .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
-                .build()
+            recorder =
+                Recorder.Builder().setQualitySelector(QualitySelector.from(Quality.HIGHEST)).build()
             videoCapture = VideoCapture.withOutput(recorder!!)
         }
 
@@ -101,7 +103,8 @@ data class CameraXState(
             },
         ).apply {
             if (imageAnalysisBuilder != null) {
-                add(imageAnalysisBuilder!!.build())
+                imageAnalysis = imageAnalysisBuilder!!.build()
+                add(imageAnalysis!!)
             }
         }
 
@@ -109,28 +112,25 @@ data class CameraXState(
         previewCamera = cameraProvider.bindToLifecycle(
             activity as LifecycleOwner,
             cameraSelector,
-            *useCases.toTypedArray(),
+            UseCaseGroup.Builder().apply {
+                for (uc in useCases.filterNotNull()) addUseCase(uc)
+            }
+                // TODO Orientation might be wrong, to be verified
+                .setViewPort(ViewPort.Builder(rational, Surface.ROTATION_0).build()).build(),
         )
+
+
         previewCamera!!.cameraControl.enableTorch(flashMode == FlashMode.ALWAYS)
     }
 
     @SuppressLint("RestrictedApi")
     private fun surfaceProvider(executor: Executor): Preview.SurfaceProvider {
-        //val metrics = DisplayMetrics().also { viewFinder.display.getRealMetrics(it) }
-        //val screenSize = Size(metrics.widthPixels, metrics.heightPixels)
-        //val screenAspectRatio = Rational(metrics.widthPixels, metrics.heightPixels)
-        //val preview = Preview.Builder()
-        //        .setTargetResolution(Size(640, 480))
-        //        .setTargetAspectRatio(screenAspectRatio)
-        //        .build()
-        //val previewFit = AutoFitPreviewBuilder.build(preview., viewFinder)
-
         return Preview.SurfaceProvider { request: SurfaceRequest ->
             val resolution = request.resolution
             val texture = textureEntry.surfaceTexture()
             texture.setDefaultBufferSize(resolution.width, resolution.height)
             val surface = Surface(texture)
-            request.provideSurface(surface, executor) { _: SurfaceRequest.Result? -> }
+            request.provideSurface(surface, executor) { }
         }
     }
 
@@ -169,13 +169,27 @@ data class CameraXState(
         val supportedQualities = QualitySelector.getSupportedQualities(previewCamera!!.cameraInfo)
         return supportedQualities.map {
             when (it) {
-                Quality.UHD -> { "UHD" }
-                Quality.HIGHEST -> { "HIGHEST" }
-                Quality.FHD -> { "FHD" }
-                Quality.HD -> { "HD" }
-                Quality.LOWEST -> { "LOWEST" }
-                Quality.SD -> { "SD" }
-                else -> { "unknown" }
+                Quality.UHD -> {
+                    "UHD"
+                }
+                Quality.HIGHEST -> {
+                    "HIGHEST"
+                }
+                Quality.FHD -> {
+                    "FHD"
+                }
+                Quality.HD -> {
+                    "HD"
+                }
+                Quality.LOWEST -> {
+                    "LOWEST"
+                }
+                Quality.SD -> {
+                    "SD"
+                }
+                else -> {
+                    "unknown"
+                }
             }
         }
     }
@@ -185,7 +199,7 @@ data class CameraXState(
     }
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
-        val previous = imageAnalysisBuilder?.previewStreamSink;
+        val previous = imageAnalysisBuilder?.previewStreamSink
         imageAnalysisBuilder?.previewStreamSink = events
         if (previous == null && events != null) {
             onStreamReady(this)
@@ -195,5 +209,22 @@ data class CameraXState(
     override fun onCancel(arguments: Any?) {
         this.imageAnalysisBuilder?.previewStreamSink?.endOfStream()
         this.imageAnalysisBuilder?.previewStreamSink = null
+    }
+
+    override fun onOrientationChanged(orientation: Int) {
+        imageAnalysis?.targetRotation = when (orientation) {
+            in 225 until 315 -> {
+                Surface.ROTATION_90
+            }
+            in 135 until 225 -> {
+                Surface.ROTATION_180
+            }
+            in 45 until 135 -> {
+                Surface.ROTATION_270
+            }
+            else -> {
+                Surface.ROTATION_0
+            }
+        }
     }
 }

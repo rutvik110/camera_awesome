@@ -5,6 +5,8 @@
 //  Created by Dimitri Dessus on 23/07/2020.
 //
 
+#include <stdatomic.h>
+
 #import <Flutter/Flutter.h>
 #import <AVFoundation/AVFoundation.h>
 #import <libkern/OSAtomic.h>
@@ -19,8 +21,10 @@
 #import "CameraFlash.h"
 #import "CameraQualities.h"
 #import "CameraPictureController.h"
-#import "CameraPermissions.h"
+#import "PermissionsController.h"
 #import "AspectRatio.h"
+#import "CameraSensorType.h"
+#import "InputAnalysisImageFormat.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -39,13 +43,14 @@ AVCaptureAudioDataOutputSampleBufferDelegate>
 @property(readonly, nonatomic) AVCaptureTorchMode torchMode;
 @property(readonly, nonatomic) AVCaptureAudioDataOutput *audioOutput;
 @property(readonly, nonatomic) CameraSensor cameraSensor;
+@property(readonly, nonatomic) NSString *captureDeviceId;
 @property(readonly, nonatomic) CaptureModes captureMode;
 @property(readonly, nonatomic) FlutterResult result;
 @property(readonly, nonatomic) NSString *currentPresset;
 @property(readonly, nonatomic) AspectRatio aspectRatio;
 @property(readonly, nonatomic) bool saveGPSLocation;
 @property(readonly, nonatomic) NSObject<FlutterBinaryMessenger> *messenger;
-@property(readonly) CVPixelBufferRef volatile latestPixelBuffer;
+@property(readonly) _Atomic(CVPixelBufferRef) latestPixelBuffer;
 @property(readonly, nonatomic) CGSize currentPreviewSize;
 @property(readonly, nonatomic) ImageStreamController *imageStreamController;
 @property(readonly, nonatomic) MotionController *motionController;
@@ -58,34 +63,34 @@ AVCaptureAudioDataOutputSampleBufferDelegate>
                          captureMode:(CaptureModes)captureMode
                               result:(nonnull FlutterResult)result
                        dispatchQueue:(dispatch_queue_t)dispatchQueue
-                           messenger:(NSObject<FlutterBinaryMessenger> *)messenger
-                    orientationEvent:(FlutterEventSink)orientationEventSink
-                 videoRecordingEvent:(FlutterEventSink)videoRecordingEventSink
-                    imageStreamEvent:(FlutterEventSink)imageStreamEventSink;
+                           messenger:(NSObject<FlutterBinaryMessenger> *)messenger;
 - (void)setPreviewSize:(CGSize)previewSize;
+- (void)setImageStreamEvent:(FlutterEventSink)imageStreamEventSink;
+- (void)setOrientationEventSink:(FlutterEventSink)orientationEventSink;
 - (void)setFlashMode:(CameraFlashMode)flashMode;
 - (void)setCaptureMode:(CaptureModes)captureMode;
 - (void)setCameraPresset:(CGSize)currentPreviewSize;
 - (void)setRecordingAudioMode:(bool)enableAudio;
 - (void)pauseVideoRecording;
 - (void)resumeVideoRecording;
+- (void)receivedImageFromStream;
 - (void)setAspectRatio:(AspectRatio)ratio;
 - (void)setExifPreferencesGPSLocation:(bool)gpsLocation;
 - (void)refresh;
 - (void)start;
 - (void)stop;
 - (void)takePictureAtPath:(NSString *)path;
-- (void)recordVideoAtPath:(NSString *)path;
+- (void)recordVideoAtPath:(NSString *)path withOptions:(NSDictionary *)options;
 - (void)stopRecordingVideo;
-- (void)instantFocus;
+- (void)focusOnPoint:(CGPoint)position preview:(CGSize)preview;
 - (void)dispose;
+- (NSArray *)getSensors:(AVCaptureDevicePosition)position;
 - (void)setResult:(FlutterResult _Nonnull)result;
-- (void)setSensor:(CameraSensor)sensor;
+- (void)setSensor:(CameraSensor)sensor deviceId:(NSString *)captureDeviceId;
 - (void)setZoom:(float)value;
 - (CGFloat)getMaxZoom;
 - (CGSize)getEffectivPreviewSize;
 - (void)setUpCaptureSessionForAudio;
-- (NSArray *)getSizes;
 @end
 
 NS_ASSUME_NONNULL_END
