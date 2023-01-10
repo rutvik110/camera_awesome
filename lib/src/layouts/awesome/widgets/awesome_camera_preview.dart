@@ -17,14 +17,6 @@ enum CameraPreviewFit {
 /// This is a fullscreen camera preview
 /// some part of the preview are cropped so we have a full sized camera preview
 class AwesomeCameraPreview extends StatefulWidget {
-  final CameraPreviewFit previewFit;
-  final Widget? loadingWidget;
-  final CameraState state;
-  final OnPreviewTap? onPreviewTap;
-  final OnPreviewScale? onPreviewScale;
-  final CameraLayoutBuilder interfaceBuilder;
-  final CameraLayoutBuilder? previewDecoratorBuilder;
-
   const AwesomeCameraPreview({
     super.key,
     this.loadingWidget,
@@ -35,6 +27,13 @@ class AwesomeCameraPreview extends StatefulWidget {
     required this.interfaceBuilder,
     this.previewDecoratorBuilder,
   });
+  final CameraPreviewFit previewFit;
+  final Widget? loadingWidget;
+  final CameraState state;
+  final OnPreviewTap? onPreviewTap;
+  final OnPreviewScale? onPreviewScale;
+  final CameraLayoutBuilder interfaceBuilder;
+  final CameraLayoutBuilder? previewDecoratorBuilder;
 
   @override
   State<StatefulWidget> createState() {
@@ -61,11 +60,12 @@ class AwesomeCameraPreviewState extends State<AwesomeCameraPreview> {
       widget.state.previewSize(),
       widget.state.textureId(),
     ]).then((data) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _previewSize = data[0] as PreviewSize;
           _textureId = data[1] as int;
         });
+      }
     });
 
     _sensorConfigSubscription =
@@ -97,14 +97,12 @@ class AwesomeCameraPreviewState extends State<AwesomeCameraPreview> {
       return widget.loadingWidget ??
           Center(
             child: Platform.isIOS
-                ? CupertinoActivityIndicator()
-                : CircularProgressIndicator(),
+                ? const CupertinoActivityIndicator()
+                : const CircularProgressIndicator(),
           );
     }
-
-    return Container(
-      color: Colors.black,
-      child: OrientationBuilder(builder: (context, orientation) {
+    return OrientationBuilder(
+      builder: (context, orientation) {
         return LayoutBuilder(
           builder: (_, constraints) {
             final size = Size(_previewSize!.width, _previewSize!.height);
@@ -147,32 +145,26 @@ class AwesomeCameraPreviewState extends State<AwesomeCameraPreview> {
               );
             }
             final preview = SizedBox(
-              width: constraints.maxWidth,
-              height: constraints.maxHeight,
-              child: ClipRect(
-                child: OverflowBox(
-                  maxWidth: double.infinity,
-                  maxHeight: double.infinity,
-                  child: Center(
-                    child: SizedBox(
-                      width: _flutterPreviewSize?.width,
-                      height: _flutterPreviewSize?.height,
-                      child: AwesomeCameraGestureDetector(
-                        child: Texture(textureId: _textureId!),
-                        onPreviewTapBuilder: widget.onPreviewTap != null &&
-                                _previewSize != null &&
-                                _flutterPreviewSize != null
-                            ? OnPreviewTapBuilder(
-                                pixelPreviewSizeGetter: () => _previewSize!,
-                                flutterPreviewSizeGetter: () =>
-                                    _flutterPreviewSize!,
-                                onPreviewTap: widget.onPreviewTap!,
-                              )
-                            : null,
-                        onPreviewScale: widget.onPreviewScale,
-                        initialZoom: widget.state.sensorConfig.zoom,
-                      ),
-                    ),
+              width: _flutterPreviewSize?.width,
+              height: _flutterPreviewSize?.height,
+              child: Center(
+                child: SizedBox(
+                  width: _flutterPreviewSize?.width,
+                  height: _flutterPreviewSize?.height,
+                  child: AwesomeCameraGestureDetector(
+                    onPreviewTapBuilder: widget.onPreviewTap != null &&
+                            _previewSize != null &&
+                            _flutterPreviewSize != null
+                        ? OnPreviewTapBuilder(
+                            pixelPreviewSizeGetter: () => _previewSize!,
+                            flutterPreviewSizeGetter: () =>
+                                _flutterPreviewSize!,
+                            onPreviewTap: widget.onPreviewTap!,
+                          )
+                        : null,
+                    onPreviewScale: widget.onPreviewScale,
+                    initialZoom: widget.state.sensorConfig.zoom,
+                    child: Texture(textureId: _textureId!),
                   ),
                 ),
               ),
@@ -184,19 +176,31 @@ class AwesomeCameraPreviewState extends State<AwesomeCameraPreview> {
                   CameraPreviewFit.fitWidth,
                   CameraPreviewFit.contain
                 ].contains(widget.previewFit)) {
-              return Stack(children: [
-                Positioned.fill(
-                  child: ClipPath(
-                    clipper: CenterCropClipper(
-                      isWidthLarger:
-                          constraints.maxWidth > constraints.maxHeight,
-                    ),
-                    child: preview,
-                  ),
-                ),
-                if (widget.previewDecoratorBuilder != null)
+              return Stack(
+                children: [
                   Positioned.fill(
-                    child: widget.previewDecoratorBuilder!(
+                    child: ClipPath(
+                      clipper: CenterCropClipper(
+                        isWidthLarger:
+                            constraints.maxWidth > constraints.maxHeight,
+                      ),
+                      child: preview,
+                    ),
+                  ),
+                  if (widget.previewDecoratorBuilder != null)
+                    Positioned.fill(
+                      child: widget.previewDecoratorBuilder!(
+                        widget.state,
+                        _flutterPreviewSize!,
+                        Rect.fromCenter(
+                          center: center,
+                          width: croppedPreviewSize.width,
+                          height: croppedPreviewSize.height,
+                        ),
+                      ),
+                    ),
+                  Positioned.fill(
+                    child: widget.interfaceBuilder(
                       widget.state,
                       _flutterPreviewSize!,
                       Rect.fromCenter(
@@ -206,24 +210,27 @@ class AwesomeCameraPreviewState extends State<AwesomeCameraPreview> {
                       ),
                     ),
                   ),
-                Positioned.fill(
-                  child: widget.interfaceBuilder(
-                    widget.state,
-                    _flutterPreviewSize!,
-                    Rect.fromCenter(
-                      center: center,
-                      width: croppedPreviewSize.width,
-                      height: croppedPreviewSize.height,
-                    ),
-                  ),
-                ),
-              ]);
+                ],
+              );
             } else {
-              return Stack(children: [
-                Positioned.fill(child: preview),
-                if (widget.previewDecoratorBuilder != null)
+              return preview;
+              return Stack(
+                children: [
+                  Positioned.fill(child: preview),
+                  if (widget.previewDecoratorBuilder != null)
+                    Positioned.fill(
+                      child: widget.previewDecoratorBuilder!(
+                        widget.state,
+                        _flutterPreviewSize!,
+                        Rect.fromCenter(
+                          center: center,
+                          width: croppedPreviewSize.width,
+                          height: croppedPreviewSize.height,
+                        ),
+                      ),
+                    ),
                   Positioned.fill(
-                    child: widget.previewDecoratorBuilder!(
+                    child: widget.interfaceBuilder(
                       widget.state,
                       _flutterPreviewSize!,
                       Rect.fromCenter(
@@ -233,30 +240,19 @@ class AwesomeCameraPreviewState extends State<AwesomeCameraPreview> {
                       ),
                     ),
                   ),
-                Positioned.fill(
-                  child: widget.interfaceBuilder(
-                    widget.state,
-                    _flutterPreviewSize!,
-                    Rect.fromCenter(
-                      center: center,
-                      width: croppedPreviewSize.width,
-                      height: croppedPreviewSize.height,
-                    ),
-                  ),
-                ),
-              ]);
+                ],
+              );
             }
           },
         );
-      }),
+      },
     );
   }
 }
 
 class CenterCropClipper extends CustomClipper<Path> {
-  final bool isWidthLarger;
-
   const CenterCropClipper({required this.isWidthLarger});
+  final bool isWidthLarger;
 
   @override
   Path getClip(Size size) {
