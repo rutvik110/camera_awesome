@@ -63,6 +63,7 @@ class CameraAwesomeBuilder extends StatefulWidget {
     OnPreviewTap Function(CameraState)? onPreviewTapBuilder,
     OnPreviewScale Function(CameraState)? onPreviewScaleBuilder,
     CameraPreviewFit? previewFit,
+    required Function(CameraState state) onStateReady,
   }) : this._(
           sensor: sensor,
           flashMode: flashMode,
@@ -80,6 +81,7 @@ class CameraAwesomeBuilder extends StatefulWidget {
           onPreviewScaleBuilder: onPreviewScaleBuilder,
           previewFit: previewFit ?? CameraPreviewFit.cover,
           previewDecoratorBuilder: null,
+          onStateReady: onStateReady,
         );
 
   /// Use the camera with the built-in interface.
@@ -118,6 +120,7 @@ class CameraAwesomeBuilder extends StatefulWidget {
     OnPreviewScale Function(CameraState)? onPreviewScaleBuilder,
     CameraPreviewFit? previewFit,
     CameraLayoutBuilder? previewDecoratorBuilder,
+    required Function(CameraState state) onStateReady,
   }) : this._(
           sensor: sensor,
           flashMode: flashMode,
@@ -139,6 +142,7 @@ class CameraAwesomeBuilder extends StatefulWidget {
           onPreviewScaleBuilder: onPreviewScaleBuilder,
           previewFit: previewFit ?? CameraPreviewFit.cover,
           previewDecoratorBuilder: previewDecoratorBuilder,
+          onStateReady: onStateReady,
         );
 
   const CameraAwesomeBuilder._({
@@ -158,6 +162,7 @@ class CameraAwesomeBuilder extends StatefulWidget {
     this.onPreviewTapBuilder,
     this.onPreviewScaleBuilder,
     this.previewDecoratorBuilder,
+    required this.onStateReady,
   });
 
   /// [front] or [back] camera
@@ -205,6 +210,8 @@ class CameraAwesomeBuilder extends StatefulWidget {
 
   final OnPreviewTap Function(CameraState)? onPreviewTapBuilder;
   final OnPreviewScale Function(CameraState)? onPreviewScaleBuilder;
+
+  final void Function(CameraState) onStateReady;
 
   @override
   State<StatefulWidget> createState() {
@@ -271,7 +278,12 @@ class _CameraWidgetBuilder extends State<CameraAwesomeBuilder>
     );
 
     // Initial CameraState is always PreparingState
-    _cameraContext.state.when(onPreparingCamera: (mode) => mode.start());
+    _cameraContext.state.when(
+      onPreparingCamera: (mode) async {
+        await mode.start();
+        widget.onStateReady(_cameraContext.state);
+      },
+    );
   }
 
   @override
