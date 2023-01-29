@@ -234,10 +234,14 @@ class _CameraWidgetBuilder extends State<CameraAwesomeBuilder>
   @override
   void didUpdateWidget(covariant CameraAwesomeBuilder oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.sensor != widget.sensor) {
+    if (oldWidget.sensor != widget.sensor ||
+        oldWidget.aspectRatio != widget.aspectRatio) {
       _cameraContext.setSensorConfig(
         SensorConfig(
           sensor: widget.sensor,
+          flash: widget.flashMode,
+          currentZoom: widget.zoom,
+          aspectRatio: widget.aspectRatio,
         ),
       );
     }
