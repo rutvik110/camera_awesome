@@ -234,6 +234,13 @@ class _CameraWidgetBuilder extends State<CameraAwesomeBuilder>
   @override
   void didUpdateWidget(covariant CameraAwesomeBuilder oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.sensor != widget.sensor) {
+      _cameraContext.setSensorConfig(
+        SensorConfig(
+          sensor: widget.sensor,
+        ),
+      );
+    }
   }
 
   @override
